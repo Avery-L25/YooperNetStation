@@ -66,7 +66,7 @@ def upload_file_to_drive(file_name, folder_id):
 def main():
     """Creates an HDF5 file, uploads it to Google Drive,
     and repeats every 10 seconds."""
-    folder_id = 
+    folder_id = "1vgaHd2zrHlnLKV55_ARNKjABrqwS_hxM"
     file_counter = 1
 
     while True:

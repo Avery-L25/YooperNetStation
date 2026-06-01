@@ -7,7 +7,7 @@ import cv2
 class Live_plotting:
 
     def __init__(self):
-        self.fig, self.axs = plt.subplots(3, sharex=True, figsize=(8, 5.12))
+        self.fig, self.axs = plt.subplots(3, sharex=True, figsize=(5.12, 5.12))
         self.num_time = []
 
         self.mag_data = {'x': [], 'y': [], 'z': []}
@@ -49,13 +49,13 @@ class Live_plotting:
 
         plt.setp(self.axs[2].get_xticklabels(), rotation=45, ha="right")
         self.fig.tight_layout()
-
+        
         # img = np.zeros((512, 512, 3), dtype=np.uint8)
 
         self.fig.canvas.draw()
-        plot = np.fromstring(self.fig.canvas.tostring_rgb(), dtype=np.uint8,
+        plot = np.fromstring(self.fig.canvas.tostring_argb(), dtype=np.uint8,  # Changed to argb
                              sep='')
-        plot = plot.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))
+        plot = plot.reshape(self.fig.canvas.get_width_height()[::-1] + (4,))   # from 3 ---> 4 not sure why
         plot = cv2.cvtColor(plot, cv2.COLOR_RGB2BGR)
         # print(plot.dtype, img.dtype)
         plot = np.hstack([cv2.putText(img, str(is_aurora), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (225, 225, 225), 2), plot])

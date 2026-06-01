@@ -1,11 +1,11 @@
 [controllables]
-AutoExpMaxExpMS = 30000
+AutoExpMaxExpMS = 3000000
 AutoExpMaxGain = 225
 AutoExpTargetBrightness = 100
 BandWidth = "auto"
-Exposure = 50000
+Exposure = 2000000
 Flip = 0
-Gain = 175
+Gain = "auto"
 HardwareBin = 0
 HighSpeedMode = 0
 MonoBin = 0
@@ -14,9 +14,9 @@ WB_B = 95
 WB_R = 70
 
 [roi]
-start_x = 0
-start_y = 50
-width = 1832
-height = 1080
-bins = 3
+start_x = 1374
+start_y = 464
+width = 2744
+height = 2744
+bins = 1
 type = "rgb24"
