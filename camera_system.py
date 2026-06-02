@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 
-# import necessary libraries
+# Supporting Libraries
 import os
 import sys
 import datetime
 from suntime import Sun
 import time
 import schedule
-
 import numpy as np
-from SPRL_Observatory.camera.image_processing import Image
-from Data_processing.hdf import hdf
-from SPRL_Observatory.Data_processing.file_transmission_2 import upload_file_to_drive
 
-from SPRL_Observatory.camera.main import shot
+# File Management Libraries
+from dotenv import load_dotenv
+from Data_processing.hdf import hdf
+from Data_processing.file_transmission_2 import upload_file_to_drive as upload_data
+
+# Camera Libraries
+from camera.image_processing import Image
+from camera.main import shot
 
 # Variable initialization
 T = 10  # When to take image
@@ -32,10 +35,8 @@ else:
     hdf_file = cur_day.strftime('%d_%m_%y.hdf5')
 
 # GOOGLE AUTHORIZATION
-folder_id = "1vgaHd2zrHlnLKV55_ARNKjABrqwS_hxM"  # Dan Wellings Server
-
-
-# todo 2 paths? the raspi and the one on crabyss
+load_dotenv()
+folder_id = os.getenv('FOLDER_ID')  # Dan Wellings Server
 
 
 def get_direcs():  # Get working file
@@ -60,6 +61,7 @@ def get_direcs():  # Get working file
         old_file = older_day.strftime('%d_%m_%y.hdf5')
 
 
+### THIS MAY BE VALUEABLE TO INTEGRATE ELSEWHERE
 def get_sun(lati=42.279594, long=-83.732124):  # Get working file
     '''
     Calculates the next instance of Sunrise/Sunset using latitude and longitude
@@ -183,7 +185,7 @@ def upload_data():  # Upload data to Google Drive
     global hdf_file, folder_id, old_file # ! add path on server
     # if glob.glob("*.hdf5"):
     print('uploading data to the ... google drive')
-    upload_file_to_drive(hdf_file, folder_id)
+    upload_data(hdf_file, folder_id)
     os.remove(old_file)
     get_direcs()
 
@@ -228,9 +230,10 @@ def data_processing():  # Collects data, looks for Aurora, Makes HDF
         img.pre = img.img
     else:
         is_aurora = False
-    #! hdf(mag, pres, temp, gps, img.img, hdf_file, cam_flag, is_aurora)  # save data to hdf
+    # ! hdf(mag, pres, temp, gps, img.img, hdf_file, cam_flag, is_aurora)  # save data to hdf
     cam_flag = False
     # * live_plot.plotting({'x': mag[0],'y': mag[1],'z': mag[2]}, {'in': temp[1], 'out': temp[0]}, pres, img.img, is_aurora)
+
 
 get_direcs()
 
