@@ -4,10 +4,10 @@
 import datetime
 import numpy as np
 # from Data_processing.image_processing import Image
-from Sensors.camera.main import shot
+from SPRL_Observatory.camera.main import shot
 
 # force reload (remove later pl0x)
-from Data_processing import image_processing
+from SPRL_Observatory.camera import image_processing
 from importlib import reload
 
 reload(image_processing)

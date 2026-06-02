@@ -6,14 +6,14 @@ import datetime
 import time
 import numpy as np
 import schedule
-from Data_processing.image_processing import Image
+from SPRL_Observatory.camera.image_processing import Image
 from Data_processing.hdf import hdf
-from Data_processing.transmission.file_transmission_2 import upload_file_to_drive
+from SPRL_Observatory.Data_processing.file_transmission_2 import upload_file_to_drive
 from Data_processing.visualizer import Live_plotting
 
 from Sensors.barom_therm_data_collection import temp_n_pres
 from Sensors.mag_data import mag_data
-from Sensors.camera.main import shot
+from SPRL_Observatory.camera.main import shot
 
 # Variable initialization
 T = 10  # When to take image

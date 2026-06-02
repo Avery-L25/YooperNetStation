@@ -2,7 +2,7 @@
 
 import schedule
 import time
-from Data_processing.transmission.file_transmission_2 import upload_file_to_drive
+from SPRL_Observatory.Data_processing.file_transmission_2 import upload_file_to_drive
 import os
 import datetime
 

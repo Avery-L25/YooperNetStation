@@ -9,11 +9,11 @@ import time
 import schedule
 
 import numpy as np
-from Data_processing.image_processing import Image
+from SPRL_Observatory.camera.image_processing import Image
 from Data_processing.hdf import hdf
-from Data_processing.transmission.file_transmission_2 import upload_file_to_drive
+from SPRL_Observatory.Data_processing.file_transmission_2 import upload_file_to_drive
 
-from Sensors.camera.main import shot
+from SPRL_Observatory.camera.main import shot
 
 # Variable initialization
 T = 10  # When to take image
