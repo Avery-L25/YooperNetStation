@@ -33,7 +33,7 @@ else:
     hdf_file = cur_day.strftime('%d_%m_%y.hdf5')
 
 # GOOGLE AUTHORIZATION
-load_dotenv()
+load_dotenv('Token_management/yoopernet.env')
 folder_id = os.getenv('FOLDER_ID')  # Dan Wellings Server
 
 

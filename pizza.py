@@ -30,31 +30,71 @@ def zwo_live():
             sleep(5)  
     print("Ending live view \n")
 
-def controller_check():
+def controller_check(zcam):
+
+    'Read and save all camera controls for the getters/setters. Returns dictionary.'
+    numOfControls = pza.getNumOfControls(zcam._cameraIndex)
+    zcam._dictControlMin  = {}
+    zcam._dictControlMax  = {}
+    zcam._dictControlType = {}
+    zcam._dictControlID   = {}
     for controlIndex in range(numOfControls):
-                controlCaps = pyzwoasi.getControlCaps(self._cameraIndex, controlIndex)
+                controlCaps = pza.getControlCaps(zcam._cameraIndex, controlIndex)
                 controlName = controlCaps.Name.decode('utf-8')
-                self._dictControlID [controlName]  = controlIndex
-                self._dictControlMin[controlName]  = controlCaps.MinValue
-                self._dictControlMax[controlName]  = controlCaps.MaxValue
-                self._dictControlType[controlName] = controlCaps.ControlType
+                zcam._dictControlID[controlName]  = controlIndex
+                zcam._dictControlMin[controlName]  = controlCaps.MinValue
+                zcam._dictControlMax[controlName]  = controlCaps.MaxValue
+                zcam._dictControlType[controlName] = controlCaps.ControlType
 
                 # Initialize both the exposure time and image type with default values
-                if controlName == "Exposure"  : self.exposure  = controlCaps.DefaultValue
-                if controlName == "Image Type": self.imageType = controlCaps.DefaultValue
+                if controlName == "Exposure"  : zcam.exposure  = controlCaps.DefaultValue
+                if controlName == "Image Type": zcam.imageType = controlCaps.DefaultValue
 
                 # Initialize the gain to minimum value, for better safety.
-                if controlName == "Gain": self.gain = controlCaps.MinValue
-
+                if controlName == "Gain": zcam.gain = controlCaps.MinValue
+                
+                print(controlName)
+                print(pza.getControlValue(zcam._cameraID,controlIndex))
                 # If the cooler can be controlled, it will always be set on
                 if (controlName == "CoolerOn") and controlCaps.IsWritable:
-                    pyzwoasi.setControlValue(self._cameraIndex, self._dictControlType["CoolerOn"], True, auto=False)
+                    pza.setControlValue(zcam._cameraIndex, zcam._dictControlType["CoolerOn"], True, auto=False)
 
+                # pza.setControlValue(cameraID, controlType, value, auto)   
+                # zcam.__setattr__("WB_R", 9) 
+    return zcam._dictControlID
 #############################
 ### The below functions need
 ### to be updated for pza
 #############################
 
+def man_con(zcam, con, val=None, auto=0):
+    '''Sets/Prints control value. If no value is given will outprint the value 
+    as (Value, is(Auto)). 
+    Call using man_cam(zcam, control, value, auto)
+    zcam is ZWOCamera class; Control is int or str type; value is int; auto is int
+    
+    TODO: ensure value/auto is allowed'''
+    # global zcam
+    dicty = zcam._dictControlID
+    key_dict = {v: k for k, v in dicty.items()}
+    if type(con) is not int:
+        con_name = con
+        con = dicty[con]
+    elif type(con) is int:
+        con_name = key_dict[con]
+    else:
+        print("Check that value \"con\" is a controllable value")
+        exit()
+
+    if val is None:
+        print(f"{con_name} is {pza.getControlValue(0,con)} [(Value, Auto)]")
+    else:
+        pza.setControlValue(0, con, val, auto)
+        if auto == True:
+            value = "Auto"
+        else:
+            value = val
+        print(f"{con_name} was set to {value}")
 
 
 # Configure Camera From toml
