@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 
 import pyzwoasi as pza  # ! Camera Interfaceing Library CRUCIAL
-import numpy as np
 import cv2 as cv
-import sys
-from time import sleep
+import numpy as np
+
 # import supporting libraries
-import os
-from pathlib import Path
 import matplotlib.pyplot as plt
+import sys
+import os
+import csv
+from pathlib import Path
+from time import sleep, ctime
+from datetime import datetime as dt
+import shutil
 
 # Check for camera
 if pza.getNumOfConnectedCameras() == 0:
@@ -17,63 +21,90 @@ if pza.getNumOfConnectedCameras() == 0:
 
 # todo Initialization
 
-
+### 
 def zwo_live():
-    'Live view from the ASI Camera'
+    '''
+    Live view from the ASI Camera
+    
+    TODO: Everything
+    refresh rate
+    gui stuff
+    csv as hdf file?? (saving all con/roi|toml file will have most)
+    '''
     with pza.ZWOCamera(0) as zcam:
-        while True:
-            print("Capturing Image")
-            x = zcam.shot(exposureTime_us=100000, imageType=1) # exp is in microsecs type 1 is rgb24
+        
+        # get initial camera settings
+        first_data = getAllControls(zcam)
 
-            cv.imwrite('image.png', x)
+        # Initialize Camera "Log File"
+        file_date = dt.now().strftime("%y_%m_%d")
+        camFileName = str(file_date + "_cam.csv")
+        if os.path.exists(camFileName) is False:
+            exit()
+        cFile = open(camFileName, 'a', newline='') 
+
+        # Write data using dictionary
+        cWriter = csv.DictWriter(cFile, fieldnames=zcam._dictControlID.keys())
+        while True:
+            
+            # Config Settings
+            expSec = 30  
+            
+            # Capture and display image
+            print("Capturing Image")
+            x = zcam.shot(exposureTime_us=expSec * 10**6, imageType=1) # exp is in microsecs type 1 is rgb24
+            cv.imshow('xframe', x)
+
+            # Save Image
+            curTime = dt.now()
+            imageName = dt.strftime(curTime, f"m%md%d_%H_%M_%S_exp{expSec}.png")
+            cv.imwrite(imageName, x)
+            print(f"image saved as {imageName}")
+            shutil.move(imageName, '/home/amland/SPRL_Observatory/camera/ImagesJune4th')
+            
+            # Pause/End
+            if cv.waitKey == ord('q'):
+                break
 
             sleep(5)  
+    
     print("Ending live view \n")
+    cv.destroyAllWindows()
 
-def controller_check(zcam):
 
-    'Read and save all camera controls for the getters/setters. Returns dictionary.'
-    numOfControls = pza.getNumOfControls(zcam._cameraIndex)
-    zcam._dictControlMin  = {}
-    zcam._dictControlMax  = {}
-    zcam._dictControlType = {}
-    zcam._dictControlID   = {}
-    for controlIndex in range(numOfControls):
-                controlCaps = pza.getControlCaps(zcam._cameraIndex, controlIndex)
-                controlName = controlCaps.Name.decode('utf-8')
-                zcam._dictControlID[controlName]  = controlIndex
-                zcam._dictControlMin[controlName]  = controlCaps.MinValue
-                zcam._dictControlMax[controlName]  = controlCaps.MaxValue
-                zcam._dictControlType[controlName] = controlCaps.ControlType
 
-                # Initialize both the exposure time and image type with default values
-                if controlName == "Exposure"  : zcam.exposure  = controlCaps.DefaultValue
-                if controlName == "Image Type": zcam.imageType = controlCaps.DefaultValue
+def config_from_toml(zcam, toml_path):
+    'Configure Camera controls and ROI from toml file'
+    pass
 
-                # Initialize the gain to minimum value, for better safety.
-                if controlName == "Gain": zcam.gain = controlCaps.MinValue
-                
-                print(controlName)
-                print(pza.getControlValue(zcam._cameraID,controlIndex))
-                # If the cooler can be controlled, it will always be set on
-                if (controlName == "CoolerOn") and controlCaps.IsWritable:
-                    pza.setControlValue(zcam._cameraIndex, zcam._dictControlType["CoolerOn"], True, auto=False)
 
-                # pza.setControlValue(cameraID, controlType, value, auto)   
-                # zcam.__setattr__("WB_R", 9) 
-    return zcam._dictControlID
-#############################
-### The below functions need
-### to be updated for pza
-#############################
+def configROI(width, height, bin):
+    '''Configure ROI Parameters
+    
+    start_x
+    start_y
+    width
+    height
+    bins
+    image type
+    '''
+    pass
+
+    imageType
+    pza.setStartPos(camID,start_x,start_y)
+    # zcam.setROI(width, height, bins, type)
+
 
 def man_con(zcam, con, val=None, auto=0):
-    '''Sets/Prints control value. If no value is given will outprint the value 
+    '''
+    Sets/Prints control value. If no value is given will outprint the value 
     as (Value, is(Auto)). 
     Call using man_cam(zcam, control, value, auto)
     zcam is ZWOCamera class; Control is int or str type; value is int; auto is int
     
-    TODO: ensure value/auto is allowed'''
+    TODO: ensure value/auto is allowed
+    does auto even work
+    '''
     # global zcam
     dicty = zcam._dictControlID
     key_dict = {v: k for k, v in dicty.items()}
@@ -95,6 +126,55 @@ def man_con(zcam, con, val=None, auto=0):
         else:
             value = val
         print(f"{con_name} was set to {value}")
+
+
+def getAllControls(zcam):
+
+    'Read and save all camera controls for the getters/setters. Returns dictionary.'
+    numOfControls = pza.getNumOfControls(zcam._cameraIndex)
+    zcam._dictControlMin  = {}
+    zcam._dictControlMax  = {}
+    zcam._dictControlType = {}
+    zcam._dictControlID   = {}
+    zcam._dictControlVals = {}
+    zcam._dictControlFacts= {}
+    for controlIndex in range(numOfControls):
+                controlCaps = pza.getControlCaps(zcam._cameraIndex, controlIndex)
+                controlName = controlCaps.Name.decode('utf-8')
+                zcam._dictControlID[controlName]  = controlIndex
+                zcam._dictControlMin[controlName]  = controlCaps.MinValue
+                zcam._dictControlMax[controlName]  = controlCaps.MaxValue
+                zcam._dictControlType[controlName] = controlCaps.ControlType
+                ValAuto = pza.getControlValue(zcam._cameraID,controlIndex)
+                zcam._dictControlFacts[controlName] = ValAuto
+
+                # Sets easy value managements
+                if ValAuto[1] is True:
+                    zcam._dictControlVals[controlName] = 'Auto'  # ! Still not sure if auto does anything but will make something later
+                else:
+                    zcam._dictControlVals[controlName] = ValAuto[0]
+
+                # Initialize both the exposure time and image type with default values
+                if controlName == "Exposure"  : zcam.exposure  = controlCaps.DefaultValue
+                if controlName == "Image Type": zcam.imageType = controlCaps.DefaultValue
+
+                # Initialize the gain to minimum value, for better safety.
+                if controlName == "Gain": zcam.gain = controlCaps.MinValue
+                
+                print(controlName)
+                print(pza.getControlValue(zcam._cameraID,controlIndex))
+                # If the cooler can be controlled, it will always be set on
+                if (controlName == "CoolerOn") and controlCaps.IsWritable:
+                    pza.setControlValue(zcam._cameraIndex, zcam._dictControlType["CoolerOn"], True, auto=False)
+
+                # pza.setControlValue(cameraID, controlType, value, auto)   
+                # zcam.__setattr__("WB_R", 9) 
+    return zcam._dictControlVals
+#############################
+### The below functions need
+### to be updated for pza
+#############################
+
 
 
 # Configure Camera From toml
