@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 import csv
+import toml
 from pathlib import Path
 from time import sleep, ctime
 from datetime import datetime as dt
@@ -19,8 +20,18 @@ if pza.getNumOfConnectedCameras() == 0:
     KeyError("No camera detected, please connect camera before continueing.")
     exit()
 
-# todo Initialization
+# Load Config Files
+config_file_path = os.getcwd() + "/.YooperConfig.toml"
+yoop_config = toml.load(config_file_path)
 
+controls = yoop_config['controllables']
+roi = yoop_config['roi']
+
+img_folder = yoop_config['paths']['Camera_Images_Folder']   # Save Images 
+img_info_file = yoop_config['paths']['Camera_Info_File']    # Save Data
+
+os.mkdir(img_folder)
+# todo Initialization
 ### 
 def zwo_live():
     '''
@@ -71,6 +82,35 @@ def zwo_live():
     print("Ending live view \n")
     cv.destroyAllWindows()
 
+
+def zwo_shot(imgName=dt.now().strftime("shot_%H_%M_%S_exp{expSec}.png"),exposure=1):
+    '''
+    Take an image view from the ASI Camera
+    
+    TODO: Everything
+    refresh rate
+    gui stuff
+    csv as hdf file?? (saving all con/roi|toml file will have most)
+    '''
+    with pza.ZWOCamera(0) as zcam:
+        # Config Settings
+        expSec = exposure
+        
+        # Capture and display image
+        print("Capturing Image")
+        x = zcam.shot(exposureTime_us=expSec * 10**6, imageType=1) # exp is in microsecs type 1 is rgb24
+        
+
+        # Save Image
+        cv.imwrite(imgName, x)
+        print(f"image saved as {imgName}")
+
+        cv.imshow('xframe', x)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+        
+
+ 
 
 
 def config_from_toml(zcam, toml_path):
