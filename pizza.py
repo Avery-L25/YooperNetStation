@@ -71,7 +71,7 @@ def zwo_live():
             imageName = dt.strftime(curTime, f"m%md%d_%H_%M_%S_exp{expSec}.png")
             cv.imwrite(imageName, x)
             print(f"image saved as {imageName}")
-            shutil.move(imageName, '/home/amland/SPRL_Observatory/camera/ImagesJune4th')
+            shutil.move(imageName, '/SPRL_Observatory/camera/ImagesJune4th')
             
             # Pause/End
             if cv.waitKey == ord('q'):
