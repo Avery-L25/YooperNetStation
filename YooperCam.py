@@ -12,7 +12,7 @@ import os
 import csv
 import toml
 from pathlib import Path
-from time import sleep, ctime
+from time import sleep, ctime, time
 from datetime import datetime as dt
 import shutil
 
@@ -70,8 +70,8 @@ class YooperCam(ZWOCamera):
 
         # Complete ROI attributes
         self.start_x, self.start_y = pza.getStartPos(self._cameraID)
-        _, _, self.width, self.height, self.binning, self.imageType = self.roi
-
+        _, _, self.width, self.height, self.binning, self.imageType = self._roi
+        
         self._dictControlVals = {}
         self._dictControlFacts = {}
         self._dictImgType = {'RAW8': 0, 'RGB24': 1, 'RAW16': 2, 'Y8': 3}
@@ -214,21 +214,55 @@ class YooperCam(ZWOCamera):
 
     @ZWOCamera.roi.getter
     def roi(self):
-        return (self.start_x, self.start_y, self.width, self.height, self.binning, self.imageType)
+        print (f" {"start_x":<7}  {"|":<5}  {self.start_x:<5}{"\n"}"
+                f" {"start_y":<7}  {"|":<5}  {self.start_y:<5}{"\n"}"
+                f" {"width":<9}  {"|":<5}  {self.width:<5}{"\n"}"
+                f" {"height":<8}  {"|":<5}  {self.height:<5}\n"
+                f" {"binning":<7}  {"|":<5}  {self.binning:<5}\n"
+                f" {"imageType":<5}  {"|":<5}  {self.imageType.name[8:]:<5}\n")
+        return None
 
+    @property
+    def _roi(self):
+        '''
+        Returns Region of Interest Parameters as:
+        (start_x, start_y, width, height, binning, imageType)
+        '''
+        return (self.start_x, self.start_y, self.width, self.height, self.binning, self.imageType)
+        # (f" {"start_x":<5}  {"|":<5}  {self.start_x:<5}\n"
+        #             f" {"start_y":<5}  {"|":<5}  {self.start_y:<5}\n"
+        #             f" {"width":<5}  {"|":<5}  {self.width:<5}\n"
+        #             f" {"height":<5}  {"|":<5}  {self.height:<5}\n"
+        #             f" {"binning":<5}  {"|":<5}  {self.binning:<5}\n"
+        #             f" {"imageType":<5}  {"|":<5}  {self.imageType.name[8:]:<5}\n"
+        #         
+
+    @property
+    def bytesPerPixel(self):
+        imgTypeIdx = self.imageType.value
+        if   imgTypeIdx == 0 or imgTypeIdx == 3:
+            bytesPerPixel = 1
+        elif imgTypeIdx == 2:
+            bytesPerPixel = 2
+        elif imgTypeIdx == 1:
+            bytesPerPixel = 3
+        else:
+            raise ValueError("Invalide Image Type")
+
+        return bytesPerPixel
+
+    ### Should this be changed to an 'roi getter'
     def setROI(self, width=None, height=None, binning=None, imageType=None, start_x=None, start_y=None):
         '''
         Set all portions of the ROI. Any unspecified params will remain the same.
         
-        NOTE: The height must be a multiple of 2
-              The width must be a multiple of 8
-              The total width or height must follow the following parameter:
-              maxVal / binning  >=  start_val + val
-        
-        When changing the binning, width, or height, the centered area may
-        not align with the lens.
+        The height must be a multiple of 2
+        The width must be a multiple of 8
+        The total width or height must follow the following parameter:
+        maxVal / binning  >=  start_val + val
 
-        TODO: Integrate dictionary for imageType
+        NOTE: When changing the binning, width, or height, the centered area may
+        not align with the lens.
         '''
         # If no value specified, use original value
         if binning   is None:   binning     = self.softwareBinning
@@ -260,11 +294,16 @@ class YooperCam(ZWOCamera):
                              "respect the following rule:\n"
                              "maxWidth/binning >= start_x + width")
         
-        roi_params = {''}
+        if type(imageType) is str:
+            imageType = self._dictImgType[imageType.upper()]
 
-        for k,v in roi_params:
+        roi_params = {'width': width, 'height': height, 'start_x': start_x,
+                      'start_y': start_y, 'binning': binning, 'imageType': imageType}
+
+        for k, v in roi_params.items():
             setattr(self, k, v)
 
+        
         pza.setStartPos(self._cameraIndex, start_x, start_y)
         pza.setROIFormat(self._cameraIndex, width, height, binning, imageType)
 
@@ -361,7 +400,78 @@ class YooperCam(ZWOCamera):
 # #{ Configure Camera From toml
 #     def config_cam(self):
 
+    def liveView(self):
+        """
+        Live view with OpenCV interface. Press 'q' key to quit.
+        Gives the ability to the user to change gain, exposure,
+        and ROI on the fly.
+        """
+        # Main frame
+        windowName = "Live Camera Capture"
+        cv.namedWindow(windowName)
+        cv.createTrackbar("Exposure" , windowName, 0  , 100, lambda x: None)
+        cv.createTrackbar("Gain"     , windowName, 0  , 100, lambda x: None)
 
+        # It is useless to go above 1 second exposure for live view testing
+        maximumExposureLimit = np.minimum(self.exposureLimits[1], 1000)
+
+        # Software binning does not change latence or FPS in live view
+        self.softwareBinning = 1
+
+        if "HardwareBin" in self._dictControlID:
+            # Hardware binning, if available, may accelerate FPS
+            self.hardwareBinning = self.hardwareBinningLimits[1]
+
+        # High speed mode, if available, may accelerate FPS
+        self.highSpeedMode = True
+
+        previousTime = time()
+        self.config_from_toml()
+        self.startVideoCapture()
+        while True:
+            # Updating camera exposure
+            exposureTime_percentage = cv.getTrackbarPos("Exposure", windowName)
+            exposureTime_us = (self.exposureLimits[0] + (maximumExposureLimit - self.exposureLimits[0]) * exposureTime_percentage / 100)
+            self.exposure = int(exposureTime_us)
+
+            # Updating camera gain
+            gain_percentage = cv.getTrackbarPos("Gain", windowName)
+            cameraGainMin, cameraGainMax = self._dictControlMin["Gain"], self._dictControlMax["Gain"]
+            gain = int(cameraGainMin + (cameraGainMax - cameraGainMin) * gain_percentage / 100)
+            self.gain = gain
+
+            # Getting image from camera
+            try:
+                # As given by the manufacturer ZWO, the refresh rate should
+                # be at least twice the exposure time plus 500 microseconds
+                refreshRate = int(2 * exposureTime_us + 500)
+                frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
+            except pza.ASIError as e:
+                print(f"Error getting video data: {e}")
+                continue
+                
+            img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
+
+            # Resize image
+            target_height = 480
+            scale = target_height / img.shape[0]
+            target_width = int(img.shape[1] * scale)
+
+            small = cv.resize(img, (target_width, target_height))
+
+            # Computing and displaying FPS
+            currentTime = time()
+            fps = 1 / (currentTime - previousTime)
+            previousTime = currentTime
+            cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            cv.imshow(windowName, small)
+
+            # Let's close the window if 'q' is pressed
+            if cv.waitKey(1) & 0xFF == ord('q'): break
+
+        self.stopVideoCapture()
+        cv.destroyAllWindows()
 #         try:
 #             if use_file is True:
 #                 self.configure_from_toml(CONFIG_FILE)  # configure camera from setting in zwo_asi.toml
