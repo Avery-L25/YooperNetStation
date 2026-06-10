@@ -40,7 +40,7 @@ class YooperCam(ZWOCamera):
         #todo yoopercam [old]
             set_control
             get_controls
-            config_from_toml
+            configFromToml
             to_dict
             to_toml #! NO
             get_roi
@@ -66,17 +66,19 @@ class YooperCam(ZWOCamera):
         is_cam = pza.getNumOfConnectedCameras()  # Grabs Camera Locations
         if is_cam == 0:
             raise KeyError("No Camera Detected.")
+
         ZWOCamera.__init__(self, *args, **kwargs)
 
-        # Complete ROI attributes
-        self.start_x, self.start_y = pza.getStartPos(self._cameraID)
-        _, _, self.width, self.height, self.binning, self.imageType = self._roi
-        
+        # setup dictionaries
         self._dictControlVals = {}
         self._dictControlFacts = {}
         self._dictImgType = {'RAW8': 0, 'RGB24': 1, 'RAW16': 2, 'Y8': 3}
+        
+        # setup class locations
         self.img_folder = str()    
         self.img_info_file = str()
+
+        # setup controls
         numOfControls = pza.getNumOfControls(self._cameraIndex)
         for controlIndex in range(numOfControls):
             controlCaps = pza.getControlCaps(self._cameraIndex, controlIndex)
@@ -98,8 +100,15 @@ class YooperCam(ZWOCamera):
 
             # pza.setControlValue(cameraID, controlType, value, auto)
             # self.__setattr__("WB_R", 9)
+        
+        # Complete ROI attributes
+        self.start_x, self.start_y = pza.getStartPos(self._cameraID)
+        _, _, self.width, self.height, self.binning, self.imageType = self._roi
+        self.configFromToml()
 
-        self.config_from_toml()
+        # setup aurora detection params
+        self._resetAuroraImages(self.width)
+
         return None
 
     def __str__(self) -> str:
@@ -164,7 +173,7 @@ class YooperCam(ZWOCamera):
         print("Ending live view \n")
         cv.destroyAllWindows()
 
-    def zwo_shot(self,save=False, imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
+    def zwo_shot(self,save=False, display=True, imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
         '''
         Take an image view from the ASI Camera
         
@@ -179,7 +188,7 @@ class YooperCam(ZWOCamera):
             
             # Capture and display image
             print("Capturing Image")
-            x = self.shot(exposureTime_us=expSec * 10**6, imageType=1) # exp is in microsecs type 1 is rgb24
+            x = self.shot(exposureTime_us=int(expSec * 10**6), imageType=1) # exp is in microsecs type 1 is rgb24
             
 
             # Save Image
@@ -187,12 +196,72 @@ class YooperCam(ZWOCamera):
                 cv.imwrite(imgName, x)
                 print(f"image saved as {imgName}")
 
-            y = cv.resize(x,[int(self._maxWidth/4),int(self._maxHeight/4)])
-            cv.imshow('frame', y)
-            cv.waitKey(0)
-            cv.destroyAllWindows()
+            if display is True:
+                y = cv.resize(x,[int(self._maxWidth/4),int(self._maxHeight/4)])
+                cv.imshow('frame', y)
+                cv.waitKey(0)
+                cv.destroyAllWindows()
 
-    def config_from_toml(self):
+    def auroraDetection(self,*args,**kwargs):
+        isAuro = self.isAurora(*args,**kwargs)
+        if isAuro is True:
+            return "Aurora Present"
+        else:
+            return "No Aurora Detected"
+
+    def _resetAuroraImages(self,size):
+        for image_detecting_vars in ['img','pre','masked','premasked']:
+            setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
+        return None
+
+    def isAurora(self,img=None):
+        # Credit:
+        # https://github.com/joncooper65/raspberry-aurora/blob/master/detect.py
+        '''
+        OpenCV Masking to detect BRIGHT, GREEN/BLUE areas and flag as
+        potential aurora
+        '''
+        # Ensure there is an image to work with
+        if img is None:
+            img = self.img
+        else:
+            self.img = img
+
+        # get rgb components as floats
+        b, g, r = cv.split(self.img)
+        r1 = r * 1.0
+        g1 = g * 1.0
+        b1 = b * 1.0
+
+        # Mask "img" and "pre" to retrieve the green part, ignore white color
+        gbratio = cv.divide(b1, g1)
+        maskgbratio = cv.inRange(gbratio, 0.9, 1.3)
+        grratio = cv.divide(r1, g1)
+        maskgrratio = cv.inRange(grratio, 0.9, 1.3)
+
+        # create masks
+        mask1 = cv.compare(0.95*g, 1.0*b, cv.CMP_GT)
+        mask2 = cv.compare(0.95*g, 1.0*r, cv.CMP_GT)
+        maskgreendominant = cv.bitwise_and(mask1, mask2)
+        verygreen = cv.bitwise_and(maskgreendominant, cv.bitwise_not( cv.bitwise_and(maskgrratio, maskgbratio)))
+
+        # get masked images
+        masked_img = cv.bitwise_and(self.img, self.img, mask=verygreen)
+        masked_pre = cv.bitwise_and(self.pre, self.pre, mask=verygreen)
+
+        # updated params
+        self.masked = masked_img
+        self.premask = masked_pre
+
+        # Use mse to determine the changes in time
+        mse = np.linalg.norm(masked_img-masked_pre)
+
+        # !save image if we want
+        # cv.imwrite('masked.jpg', masked_img)
+        
+        return bool(mse)
+
+    def configFromToml(self):
         '''
         Configure Camera controls and ROI from toml file
 
@@ -410,7 +479,7 @@ class YooperCam(ZWOCamera):
         windowName = "Live Camera Capture"
         cv.namedWindow(windowName)
         cv.createTrackbar("Exposure" , windowName, 0  , 100, lambda x: None)
-        cv.createTrackbar("Gain"     , windowName, 0  , 100, lambda x: None)
+        cv.createTrackbar("Gain"     , windowName, 100  , 100, lambda x: None)
 
         # It is useless to go above 1 second exposure for live view testing
         maximumExposureLimit = np.minimum(self.exposureLimits[1], 1000)
@@ -425,50 +494,65 @@ class YooperCam(ZWOCamera):
         # High speed mode, if available, may accelerate FPS
         self.highSpeedMode = True
 
+        # Reinitialize detection parameters live image size
+        aur_size = 1200
+        self._resetAuroraImages(aur_size)
+
+        state = True
         previousTime = time()
-        self.config_from_toml()
+        self.configFromToml()
         self.startVideoCapture()
         while True:
-            # Updating camera exposure
-            exposureTime_percentage = cv.getTrackbarPos("Exposure", windowName)
-            exposureTime_us = (self.exposureLimits[0] + (maximumExposureLimit - self.exposureLimits[0]) * exposureTime_percentage / 100)
-            self.exposure = int(exposureTime_us)
+            if state is True:  
+                # Updating camera exposure
+                exposureTime_percentage = cv.getTrackbarPos("Exposure", windowName)
+                exposureTime_us = (self.exposureLimits[0] + (maximumExposureLimit - self.exposureLimits[0]) * exposureTime_percentage / 100)
+                self.exposure = int(exposureTime_us)
 
-            # Updating camera gain
-            gain_percentage = cv.getTrackbarPos("Gain", windowName)
-            cameraGainMin, cameraGainMax = self._dictControlMin["Gain"], self._dictControlMax["Gain"]
-            gain = int(cameraGainMin + (cameraGainMax - cameraGainMin) * gain_percentage / 100)
-            self.gain = gain
+                # Updating camera gain
+                gain_percentage = cv.getTrackbarPos("Gain", windowName)
+                cameraGainMin, cameraGainMax = self._dictControlMin["Gain"], self._dictControlMax["Gain"]
+                gain = int(cameraGainMin + (cameraGainMax - cameraGainMin) * gain_percentage / 100)
+                self.gain = gain
 
-            # Getting image from camera
-            try:
-                # As given by the manufacturer ZWO, the refresh rate should
-                # be at least twice the exposure time plus 500 microseconds
-                refreshRate = int(2 * exposureTime_us + 500)
-                frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
-            except pza.ASIError as e:
-                print(f"Error getting video data: {e}")
-                continue
-                
-            img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
+                # Getting image from camera
+                try:
+                    # As given by the manufacturer ZWO, the refresh rate should
+                    # be at least twice the exposure time plus 500 microseconds
+                    refreshRate = int(2 * exposureTime_us + 500)
+                    frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
+                except pza.ASIError as e:
+                    print(f"Error getting video data: {e}")
+                    continue
+                    
+                img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
 
-            # Resize image
-            target_height = 480
-            scale = target_height / img.shape[0]
-            target_width = int(img.shape[1] * scale)
+                # Resize image for display
+                disp_size = 480
+                target_height = 480
+                scale = target_height / img.shape[0]
+                target_width = int(img.shape[1] * scale)
+                small = cv.resize(img, (disp_size, disp_size))
 
-            small = cv.resize(img, (target_width, target_height))
+                # run aurora detection and display
+                aur_img = cv.resize(img, (aur_size, aur_size))
+                aur_txt = self.auroraDetection(aur_img)
 
-            # Computing and displaying FPS
-            currentTime = time()
-            fps = 1 / (currentTime - previousTime)
-            previousTime = currentTime
-            cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv.putText(small, f"{aur_txt}", (10, disp_size-30), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+                # Computing and displaying FPS
+                currentTime = time()
+                fps = 1 / (currentTime - previousTime)
+                previousTime = currentTime
+                cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
             cv.imshow(windowName, small)
 
             # Let's close the window if 'q' is pressed
-            if cv.waitKey(1) & 0xFF == ord('q'): break
+            key_press = cv.waitKey(1) & 0xFF
+            if key_press == ord('q'): break  # q for quit
+            if key_press == ord(' '): state = not state  # [space] for pause
+
 
         self.stopVideoCapture()
         cv.destroyAllWindows()
