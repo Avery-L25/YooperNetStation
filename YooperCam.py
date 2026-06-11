@@ -22,38 +22,28 @@ class YooperCam(ZWOCamera):
     Interface with a ZWO ASI camera.
 
     TODO Helper Functions:
-        Configure from toml file.
-        Configure given controllable/roi params, use defaults if not.
-        Set individual controls.
-        Set individual roi components.
-
-        Output Control(s) and ROI.
+        Configure from toml file.                                           #* Done!
+        Configure given controllable/roi params, use defaults if not.       #* Done!
+        Set individual controls.                                            #* Done!
+        Set individual roi components.                                      #* Done!
+        Print Control(s) and ROI.                                           #* Done!
+        Return roi.                                                         #* Done!
+        Return controllables.                                               #? Done I think...
 
     TODO image processing:
-        Aurora Detection
-        Resize image
-        Take single image.
-        Live feed of camera.
-        Auto exposure.
+        Aurora Detection                                                    #  todo This is setup but not working
+        Resize image                                                        #? What need be done
+        Take single image.                                                  #* Done!
+        Live feed of camera.                                                #* Done!
+        Auto exposure.                                                      #  todo
 
     TODO [look over] Older Functions:
-        #todo yoopercam [old]
-            set_control
-            get_controls
-            configFromToml
-            to_dict
-            to_toml #! NO
-            get_roi
-            _check_controllable
-            configure
-            capture
-            __str__
         #todo main
-            udev
-            print_
-            shot
-            _shot
-            dump
+            udev                                                            
+            print_                                                          #? What need be done
+            shot                                                            #? What need be done
+            _shot                                                           #? What need be done
+            dump                                                            #? What need be done
         #todo Look into integration with
             image
             roi
@@ -210,7 +200,7 @@ class YooperCam(ZWOCamera):
             return "No Aurora Detected"
 
     def _resetAuroraImages(self,size):
-        for image_detecting_vars in ['img','pre','masked','premasked']:
+        for image_detecting_vars in ['img','pre','masked','premask']:
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
 
@@ -222,13 +212,18 @@ class YooperCam(ZWOCamera):
         potential aurora
         '''
         # Ensure there is an image to work with
-        if img is None:
-            img = self.img
-        else:
+        if img is not None:
+            pre_updated = True
+            self.pre = self.img
             self.img = img
+        else:
+            pre_updated = False
+            img = self.img
+        
+        pre = self.pre
 
         # get rgb components as floats
-        b, g, r = cv.split(self.img)
+        b, g, r = cv.split(img)
         r1 = r * 1.0
         g1 = g * 1.0
         b1 = b * 1.0
@@ -246,13 +241,14 @@ class YooperCam(ZWOCamera):
         verygreen = cv.bitwise_and(maskgreendominant, cv.bitwise_not( cv.bitwise_and(maskgrratio, maskgbratio)))
 
         # get masked images
-        masked_img = cv.bitwise_and(self.img, self.img, mask=verygreen)
-        masked_pre = cv.bitwise_and(self.pre, self.pre, mask=verygreen)
+        masked_img = cv.bitwise_and(img, img, mask=verygreen)
+        masked_pre = cv.bitwise_and(pre, pre, mask=verygreen)
 
         # updated params
         self.masked = masked_img
         self.premask = masked_pre
-
+        if pre_updated is False:
+            self.pre = self.img
         # Use mse to determine the changes in time
         mse = np.linalg.norm(masked_img-masked_pre)
 
@@ -283,12 +279,12 @@ class YooperCam(ZWOCamera):
 
     @ZWOCamera.roi.getter
     def roi(self):
-        print (f" {"start_x":<7}  {"|":<5}  {self.start_x:<5}{"\n"}"
-                f" {"start_y":<7}  {"|":<5}  {self.start_y:<5}{"\n"}"
-                f" {"width":<9}  {"|":<5}  {self.width:<5}{"\n"}"
-                f" {"height":<8}  {"|":<5}  {self.height:<5}\n"
-                f" {"binning":<7}  {"|":<5}  {self.binning:<5}\n"
-                f" {"imageType":<5}  {"|":<5}  {self.imageType.name[8:]:<5}\n")
+        print (f" {"start_x":<9}  {"|":<3}  {self.start_x:<3}{"\n"}"
+                f" {"start_y":<9}  {"|":<3}  {self.start_y:<3}{"\n"}"
+                f" {"width":<9}  {"|":<3}  {self.width:<3}{"\n"}"
+                f" {"height":<9}  {"|":<3}  {self.height:<3}\n"
+                f" {"binning":<9}  {"|":<3}  {self.binning:<3}\n"
+                f" {"imageType":<7}  {"|":<3}  {self.imageType.name[8:]:<3}\n")
         return None
 
     @property
@@ -376,6 +372,13 @@ class YooperCam(ZWOCamera):
         pza.setStartPos(self._cameraIndex, start_x, start_y)
         pza.setROIFormat(self._cameraIndex, width, height, binning, imageType)
 
+    @property
+    def controllables(self):
+        for c,v in self._dictControlVals.items():
+            print(f"{c:<25} {"|":<3} {v:<3}")
+        return None
+
+
     def setControllables(self, Gain=None, Exposure=None, WB_R=None, WB_B=None,
                          Offset=None, BandWidth=None, Flip=None,
                          AutoExpMaxGain=None, AutoExpMaxExpMS=None,
@@ -432,6 +435,7 @@ class YooperCam(ZWOCamera):
             print(f"{con_name} is {pza.getControlValue(0,con)} [(Value, Auto)]")
         else:
             pza.setControlValue(0, con, val, auto)
+            self._dictControlVals[con] = val
             if auto == True:
                 value = "Auto"
             else:
@@ -478,7 +482,7 @@ class YooperCam(ZWOCamera):
         # Main frame
         windowName = "Live Camera Capture"
         cv.namedWindow(windowName)
-        cv.createTrackbar("Exposure" , windowName, 0  , 100, lambda x: None)
+        cv.createTrackbar("Exposure" , windowName, 50  , 100, lambda x: None)
         cv.createTrackbar("Gain"     , windowName, 100  , 100, lambda x: None)
 
         # It is useless to go above 1 second exposure for live view testing
@@ -497,6 +501,9 @@ class YooperCam(ZWOCamera):
         # Reinitialize detection parameters live image size
         aur_size = 1200
         self._resetAuroraImages(aur_size)
+
+        disp_size = 480
+        small = np.zeros((disp_size, disp_size,3))
 
         state = True
         previousTime = time()
@@ -528,7 +535,6 @@ class YooperCam(ZWOCamera):
                 img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
 
                 # Resize image for display
-                disp_size = 480
                 target_height = 480
                 scale = target_height / img.shape[0]
                 target_width = int(img.shape[1] * scale)
@@ -570,6 +576,124 @@ class YooperCam(ZWOCamera):
 #         except RuntimeError:
 #             print("Camera was not configured")
 #             pass  # This error will happen if camera was configured but had not taken an image
+    def liveTestView(self):
+        """
+        Live view with visuals on all testing parameters.
+
+        """
+        # Main frame
+        windowName = "Live Camera Capture"
+        cv.namedWindow(windowName)
+        cv.createTrackbar("Exposure" , windowName, 50  , 100, lambda x: None)
+        cv.createTrackbar("Gain"     , windowName, 100  , 100, lambda x: None)
+
+        # 1 second maximum instead
+        maximumExposureLimit = np.minimum(self.exposureLimits[1], 1000)
+
+        # Software binning does not change latence or FPS in live view
+        self.softwareBinning = 1
+
+        if "HardwareBin" in self._dictControlID:
+            # Hardware binning, if available, may accelerate FPS
+            self.hardwareBinning = self.hardwareBinningLimits[1]
+
+        # High speed mode, if available, may accelerate FPS
+        self.highSpeedMode = True
+
+        # Reinitialize detection parameters live image size
+        aur_size = 1200
+        self._resetAuroraImages(aur_size)
+
+        disp_size = 800
+        ds = disp_size
+        border_width = 40 
+        pos1 = (border_width, border_width)
+        pos2 = (2*border_width+disp_size, border_width)
+        pos3 = (border_width, 2*border_width+disp_size)
+        pos4 = (2*border_width+disp_size, 2*border_width+disp_size)
+        canvas_size = 2*disp_size + 3*border_width
+        
+        # Initialize parameters
+        small = np.full((canvas_size, canvas_size,3),100, dtype=np.uint8)
+        state = True
+        single_shot = False
+        previousTime = time()
+        self.configFromToml()
+        self.startVideoCapture()
+        while True:
+            if state is True:  
+                # Updating camera exposure
+                exposureTime_percentage = cv.getTrackbarPos("Exposure", windowName)
+                exposureTime_us = (self.exposureLimits[0] + (maximumExposureLimit - self.exposureLimits[0]) * exposureTime_percentage / 100)
+                self.exposure = int(exposureTime_us)
+               
+                # take one image without turning off feed.
+                if single_shot is True:
+                    single_shot = False
+                    state = False
+
+                # Updating camera gain
+                gain_percentage = cv.getTrackbarPos("Gain", windowName)
+                cameraGainMin, cameraGainMax = self._dictControlMin["Gain"], self._dictControlMax["Gain"]
+                gain = int(cameraGainMin + (cameraGainMax - cameraGainMin) * gain_percentage / 100)
+                self.gain = gain
+
+                # Getting image from camera
+                try:
+                    # As given by the manufacturer ZWO, the refresh rate should
+                    # be at least twice the exposure time plus 500 microseconds
+                    refreshRate = int(2 * exposureTime_us + 500)
+                    frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
+                except pza.ASIError as e:
+                    print(f"Error getting video data: {e}")
+                    continue
+                    
+                img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
+
+                # Resize image for display
+
+                # run aurora detection and display
+                aur_img = cv.resize(img, (aur_size, aur_size))
+                # self.img = aur_img
+                aur_txt = self.auroraDetection(aur_img)
+
+                # Computing and displaying FPS
+                rs_img = cv.resize(aur_img, (disp_size,disp_size))
+                rs_pre = cv.resize(self.pre, (disp_size,disp_size))
+                rs_preMask = cv.resize(self.premask, (disp_size,disp_size))
+                rs_Mask = cv.resize(self.masked, (disp_size,disp_size))
+                
+                small[pos1[0]:pos1[0]+ds,pos1[1]:pos1[1]+ds] = rs_img
+                cv.putText(small, f"Current Image", (pos1), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+                small[pos3[0]:pos3[0]+ds,pos3[1]:pos3[1]+ds] = rs_pre
+                cv.putText(small, f"Previous Image", (pos2), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                
+                small[pos2[0]:pos2[0]+ds,pos2[1]:pos2[1]+ds] = rs_Mask
+                cv.putText(small, f"Current Mask", (pos3), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                
+                small[pos4[0]:pos4[0]+ds,pos4[1]:pos4[1]+ds] = rs_preMask
+                cv.putText(small, f"Previous Mask", (pos4), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+                # currentTime = time()
+                # fps = 1 / (currentTime - previousTime)
+                # previousTime = currentTime
+                cv.putText(small, f"{aur_txt}", (int(disp_size*0.75), disp_size), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                # cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            cv.imshow(windowName, small)
+
+            # Let's close the window if 'q' is pressed
+            key_press = cv.waitKey(1) & 0xFF
+            if key_press == ord('q'): break  # q for quit
+            if key_press == ord(' '): state = not state  # [space] for pause
+            if key_press == ord('c'): 
+                state = not state
+                single_shot = True
+
+
+        self.stopVideoCapture()
+        cv.destroyAllWindows()
 
 
 
