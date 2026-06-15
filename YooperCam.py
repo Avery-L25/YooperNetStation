@@ -28,24 +28,18 @@ class YooperCam(ZWOCamera):
         Set individual roi components.                                      #* Done!
         Print Control(s) and ROI.                                           #* Done!
         Return roi.                                                         #* Done!
-        Return controllables.                                               #? Done I think...
+        Return controllables.                                               #* Done I think...
 
     TODO image processing:
         Aurora Detection                                                    #  todo This is setup but not working
-        Resize image                                                        #? What need be done
+        Resize image                                                        #* What need be done
         Take single image.                                                  #* Done!
         Live feed of camera.                                                #* Done!
         Auto exposure.                                                      #  todo
 
     TODO [look over] Older Functions:
-        #todo main
-            udev                                                            
-            print_                                                          #? What need be done
-            shot                                                            #? What need be done
-            _shot                                                           #? What need be done
-            dump                                                            #? What need be done
         #todo Look into integration with
-            image
+            image                                                           #? Check if these make sense to integrate differently
             roi
 
 
@@ -102,22 +96,29 @@ class YooperCam(ZWOCamera):
         return None
 
     def __str__(self) -> str:
-        return (f" {"VALUE":<5}  {"|":<5}  {"SELF":<5}  {"|":<5}  {"FUNCTION":<5}\n"
-                f" {"start_x":<10}  {"|":<5}  {self.start_x:<9}  {"|":<5}  {pza.getStartPos(self._cameraID)[0]:<5}\n"
-                f" {"image_type":<10}  {"|":<5}  {self.imageType:<9}  {"|":<5}  {self.roi[3]:<5}\n"
-                f" {"wb_r":<10}  {"|":<5}  {self.WB_R:<9}  {"|":<5}  {pza.getControlValue(self._cameraID,self._dictControlID['WB_R']):<5}\n"
-                )
+        print(f"YooperCam Camera Object Name: {self._name}\n"
+              f"Intended to take all-sky images and flag potential auorora\n"
+              f"in parallel with magnetometers and other sensors.\n\n"
+              f"Saving images to {self.img_folder}\nSaving flags + other cam data"
+              f"to {self.img_info_file}.\n")
+
+        print(f"ROI")
+        self.roi
+        print(f"Controllables")
+        self.controllables
+        return str()
 
     def __getattr__(self, name):
         pass
 
     def zwo_live(self, save=False):
         '''
-        Live view from the ASI Camera
+        Captures and saves images to save locations.
         
         TODO: Everything
         refresh rate
         gui stuff
+        update exposure
         csv as hdf file?? (saving all con/roi|toml file will have most)
         '''
     
@@ -193,6 +194,7 @@ class YooperCam(ZWOCamera):
                 cv.destroyAllWindows()
 
     def auroraDetection(self,*args,**kwargs):
+        'Checks for aurora and returns a true or false string. Run \"isAurora\" for a bool'
         isAuro = self.isAurora(*args,**kwargs)
         if isAuro is True:
             return "Aurora Present"
@@ -200,6 +202,10 @@ class YooperCam(ZWOCamera):
             return "No Aurora Detected"
 
     def _resetAuroraImages(self,size):
+        '''
+        Sets up default testing images for aurora detection, takes a size 
+        assuming image is a square for an all-sky image
+        '''
         for image_detecting_vars in ['img','pre','masked','premask']:
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
@@ -208,8 +214,14 @@ class YooperCam(ZWOCamera):
         # Credit:
         # https://github.com/joncooper65/raspberry-aurora/blob/master/detect.py
         '''
-        OpenCV Masking to detect BRIGHT, GREEN/BLUE areas and flag as
-        potential aurora
+        Check most images against previous for bright, green/blue areas and
+        returns a flag (bool) if detected.
+
+        Input an image.
+        Return a boolean.
+
+        NOTE: If instead of inputing an image, it is assigned directly the
+        compared \'pre\' image will not be the last camera image.
         '''
         # Ensure there is an image to work with
         if img is not None:
@@ -279,6 +291,7 @@ class YooperCam(ZWOCamera):
 
     @ZWOCamera.roi.getter
     def roi(self):
+        'Prints ROI info to terminal'
         print (f" {"start_x":<9}  {"|":<3}  {self.start_x:<3}{"\n"}"
                 f" {"start_y":<9}  {"|":<3}  {self.start_y:<3}{"\n"}"
                 f" {"width":<9}  {"|":<3}  {self.width:<3}{"\n"}"
@@ -304,6 +317,7 @@ class YooperCam(ZWOCamera):
 
     @property
     def bytesPerPixel(self):
+        'property based on image type for array management'
         imgTypeIdx = self.imageType.value
         if   imgTypeIdx == 0 or imgTypeIdx == 3:
             bytesPerPixel = 1
@@ -317,7 +331,8 @@ class YooperCam(ZWOCamera):
         return bytesPerPixel
 
     ### Should this be changed to an 'roi getter'
-    def setROI(self, width=None, height=None, binning=None, imageType=None, start_x=None, start_y=None):
+    def setROI(self, width=None, height=None, binning=None, imageType=None,
+               start_x=None, start_y=None):
         '''
         Set all portions of the ROI. Any unspecified params will remain the same.
         
@@ -374,6 +389,7 @@ class YooperCam(ZWOCamera):
 
     @property
     def controllables(self):
+        'print control information to terminal'
         for c,v in self._dictControlVals.items():
             print(f"{c:<25} {"|":<3} {v:<3}")
         return None
@@ -442,6 +458,7 @@ class YooperCam(ZWOCamera):
                 value = val
             print(f"{con_name} was set to {value}")
 
+    ### Currently unused, has some integrations that need to be accounted for prior to removal.
     def getAllControls(self):
         '''
         Read and save all camera controls for the getters/setters. 
@@ -466,18 +483,10 @@ class YooperCam(ZWOCamera):
 
         return self._dictControlVals
 
-#     #############################
-#     ### The below functions need
-#     ### to be updated for pza
-#     #############################
-# #{ Configure Camera From toml
-#     def config_cam(self):
-
-    def liveView(self):
+    def liveView(self, dim=480):
         """
-        Live view with OpenCV interface. Press 'q' key to quit.
-        Gives the ability to the user to change gain, exposure,
-        and ROI on the fly.
+        Live view with OpenCV interface. Press 'q' key to quit and space to pause.
+        Allows live changing of gain and exposure while flagging for aurora.
         """
         # Main frame
         windowName = "Live Camera Capture"
@@ -502,7 +511,7 @@ class YooperCam(ZWOCamera):
         aur_size = 1200
         self._resetAuroraImages(aur_size)
 
-        disp_size = 480
+        disp_size = dim
         small = np.zeros((disp_size, disp_size,3))
 
         state = True
@@ -535,9 +544,9 @@ class YooperCam(ZWOCamera):
                 img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
 
                 # Resize image for display
-                target_height = 480
-                scale = target_height / img.shape[0]
-                target_width = int(img.shape[1] * scale)
+                # target_height = 480
+                # scale = target_height / img.shape[0]
+                # target_width = int(img.shape[1] * scale)
                 small = cv.resize(img, (disp_size, disp_size))
 
                 # run aurora detection and display
@@ -562,24 +571,15 @@ class YooperCam(ZWOCamera):
 
         self.stopVideoCapture()
         cv.destroyAllWindows()
-#         try:
-#             if use_file is True:
-#                 self.configure_from_toml(CONFIG_FILE)  # configure camera from setting in zwo_asi.toml
-#                 self.to_toml('zwo_asi.toml')
-#                 print("\nConfiguring camera using " + '\033[94m' + f"{config_name}\n"
-#                     + '\033[0m')
-#             elif use_file is False:
-#                 self.configure(conROI, conTroll)
-#                 print("THIS SHOULDN'T HAPPEN")
-#             else:
-#                 raise
-#         except RuntimeError:
-#             print("Camera was not configured")
-#             pass  # This error will happen if camera was configured but had not taken an image
+
     def liveTestView(self):
         """
         Live view with visuals on all testing parameters.
+        Built in operations to help with analysis.
 
+        Press 'q' to quit.
+        Press ' ' (space) to pause data acquisition.
+        Precc 'c' to capture a single image.
         """
         # Main frame
         windowName = "Live Camera Capture"
@@ -603,7 +603,7 @@ class YooperCam(ZWOCamera):
         # Reinitialize detection parameters live image size
         aur_size = 1200
         self._resetAuroraImages(aur_size)
-
+        aur_disp = np.zeros([800,800,3])
         disp_size = 800
         ds = disp_size
         border_width = 40 
@@ -626,11 +626,6 @@ class YooperCam(ZWOCamera):
                 exposureTime_percentage = cv.getTrackbarPos("Exposure", windowName)
                 exposureTime_us = (self.exposureLimits[0] + (maximumExposureLimit - self.exposureLimits[0]) * exposureTime_percentage / 100)
                 self.exposure = int(exposureTime_us)
-               
-                # take one image without turning off feed.
-                if single_shot is True:
-                    single_shot = False
-                    state = False
 
                 # Updating camera gain
                 gain_percentage = cv.getTrackbarPos("Gain", windowName)
@@ -653,13 +648,16 @@ class YooperCam(ZWOCamera):
                 # Resize image for display
 
                 # run aurora detection and display
+                
+                
                 aur_img = cv.resize(img, (aur_size, aur_size))
                 # self.img = aur_img
                 aur_txt = self.auroraDetection(aur_img)
-
+                pre_disp = aur_disp
+                aur_disp = cv.resize(img, (disp_size, disp_size))
                 # Computing and displaying FPS
-                rs_img = cv.resize(aur_img, (disp_size,disp_size))
-                rs_pre = cv.resize(self.pre, (disp_size,disp_size))
+                rs_img = cv.resize(aur_disp, (disp_size,disp_size))
+                rs_pre = cv.resize(pre_disp, (disp_size,disp_size))
                 rs_preMask = cv.resize(self.premask, (disp_size,disp_size))
                 rs_Mask = cv.resize(self.masked, (disp_size,disp_size))
                 
@@ -681,6 +679,51 @@ class YooperCam(ZWOCamera):
                 cv.putText(small, f"{aur_txt}", (int(disp_size*0.75), disp_size), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
                 # cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
+
+            if single_shot is True:
+                # Getting image from camera
+                try:
+                    # As given by the manufacturer ZWO, the refresh rate should
+                    # be at least twice the exposure time plus 500 microseconds
+                    refreshRate = int(2 * exposureTime_us + 500)
+                    frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
+                except pza.ASIError as e:
+                    print(f"Error getting video data: {e}")
+                    continue
+                    
+                img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
+
+                aur_img = cv.resize(img, (aur_size, aur_size))
+                # self.img = aur_img
+                aur_txt = self.auroraDetection(aur_img)
+                pre_disp = aur_disp
+                aur_disp = cv.resize(img, (disp_size, disp_size))
+                # Computing and displaying FPS
+                rs_img = cv.resize(aur_disp, (disp_size,disp_size))
+                rs_pre = cv.resize(pre_disp, (disp_size,disp_size))
+                rs_preMask = cv.resize(self.premask, (disp_size,disp_size))
+                rs_Mask = cv.resize(self.masked, (disp_size,disp_size))
+                
+                small[pos1[0]:pos1[0]+ds,pos1[1]:pos1[1]+ds] = rs_img
+                cv.putText(small, f"Current Image", (pos1), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+                small[pos3[0]:pos3[0]+ds,pos3[1]:pos3[1]+ds] = rs_pre
+                cv.putText(small, f"Previous Image", (pos2), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                
+                small[pos2[0]:pos2[0]+ds,pos2[1]:pos2[1]+ds] = rs_Mask
+                cv.putText(small, f"Current Mask", (pos3), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                
+                small[pos4[0]:pos4[0]+ds,pos4[1]:pos4[1]+ds] = rs_preMask
+                cv.putText(small, f"Previous Mask", (pos4), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+                # currentTime = time()
+                # fps = 1 / (currentTime - previousTime)
+                # previousTime = currentTime
+                cv.putText(small, f"{aur_txt}", (int(disp_size*0.75), disp_size), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                # cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                 
+                single_shot = False
+
             cv.imshow(windowName, small)
 
             # Let's close the window if 'q' is pressed
@@ -688,72 +731,10 @@ class YooperCam(ZWOCamera):
             if key_press == ord('q'): break  # q for quit
             if key_press == ord(' '): state = not state  # [space] for pause
             if key_press == ord('c'): 
-                state = not state
+                state = False
                 single_shot = True
 
 
         self.stopVideoCapture()
         cv.destroyAllWindows()
 
-
-
-#         # ? changing some controllables
-#         # (supported arguments: the one that are
-#         # indicated as 'writable' in the information
-#         # printed above)
-#         print("setting controls")
-#         self.set_control("Gain",300)
-#         self.set_control("Exposure","auto")
-
-#         con = self.get_controls()
-#         # con.items()
-#         dict_keys = con.keys()  # the dictionary, not used for lookup
-#         keys = list(dict_keys)
-
-
-
-#         # ? changing the ROI (region of interest)
-#         print("setting ROI")
-#         roi = self.get_roi()
-#         roi.type = cza.ImageType.rgb24
-#         roi.start_x = 00
-#         roi.start_y = 00
-#         roi.bins = 2
-#         roi.width = 2744
-#         roi.height = 1836
-#         self.set_roi(roi)
-
-#         # saving this updated configuration to a file
-#         conf_path = Path(os.getcwd() + '/asi.toml')
-#         self.to_toml(conf_path)
-
-#     def take_photo(self):
-#         # ? Capture Image
-#         image = self.capture()       # take picture
-#         img_raw = image.get_image()     # save picture to (numpy array) for display
-#         # taking the picture
-#         filepath = Path(os.getcwd() + '/img_cza.png')
-        
-#         # todo find a way to check for config.
-#         # filepath and show are optional, if you do not
-#         # want to save the image or display it
-#         image = self.capture(filepath=filepath,show=show)
-
-#         return img_raw
-
-#     # ! =============================================
-#     def make_cv_img(self, roi, frame):
-#         # Take image frame as list to array  of shape
-#         height = roi.get_y_size()
-#         width = self.get_x_size()
-#         shape = (width, height)
-#         small_shape = tuple(int(ti/4) for ti in shape)
-#         img_array = np.array(frame, dtype=np.uint16).reshape(shape)
-#         print("resizing image with opencv")
-
-
-#         # Create a black image, a window
-#         img = cv.resize(img_array, small_shape )
-#         cv.imwrite("img_cv.png", img)
-# }#}
-        
