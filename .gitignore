@@ -194,12 +194,10 @@ cython_debug/
 .cursorindexingignore
 
 # Extra files that may not be implemented into the raspi
-zwo_asi.toml
 SPRL_Observatory/Extra_Unused
 trial.py
 
 
-*.toml
 *.pyc
 SPRL_Observatory/Sensors/__pycache__/
 SPRL_Observatory/Sensors/camera/__pycache__
