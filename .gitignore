@@ -210,7 +210,7 @@ Extra_Unused
 # A complete testing folder
 SPRL_Observatory/Data_processing/transmission
 SPRL_Observatory/Data_processing/transmission
-Setup
+
 
 # types of files
 *.rules

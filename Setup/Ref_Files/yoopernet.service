@@ -1,0 +1,15 @@
+# /etc/system/system/yoopernet.service
+[Unit]
+Description=YooperNet Observatory
+After=multi-user.target
+
+[Service]
+Type=exec
+WorkingDirectory=/home/yooperobs/SPRL_Observatory
+ExecStart=/home/yooperobs/startup.sh
+User=yooperobs
+Restart=aways
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
