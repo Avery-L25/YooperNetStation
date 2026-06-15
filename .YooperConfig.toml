@@ -1,0 +1,30 @@
+[controllables]
+AutoExpMaxExpMS = 3000000                   
+AutoExpMaxGain = 225                        
+AutoExpTargetBrightness = 100               
+BandWidth = "auto"                          
+Exposure = 360000000  # in micro-seconds    # Default: 1000000 (1 second)
+Flip = 0                                    # Default: 0
+Gain = "auto"                               # Default: "auto"
+HardwareBin = 0                             # Default: 0
+HighSpeedMode = 0                       
+MonoBin = 0                                 
+Offset = 5                                  
+WB_B = 95  # DO NOT CHANGE WHITE BALANCE    # Default: 95
+WB_R = 70                                   # Default: 70
+
+[roi]
+start_x = 1374                              # Default: 1374
+start_y = 464                               # Default: 464
+width = 2744    # Must be a multiple of 8   # Default: 2744
+height = 2744   # Must be a multiple of 2   # Default: 2744
+binning = 1                                 # Default: 1 
+imageType = "RGB24"                         # Default: "RGB24"
+
+[paths]
+Camera_Images_Folder="/home/USER/SPRL_Observatory/Data/camera_images" 
+Camera_Info_File="/home/USER/SPRL_Observatory/Data/image_info_files"
+Sensor_Data_File="/home/USER/SPRL_Observatory/Data/sensor_files"
+GDrive_Folder_ID=0
+
+[passkeys]
