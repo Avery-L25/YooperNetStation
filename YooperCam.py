@@ -2,19 +2,21 @@
 
 from pyzwoasi import ZWOCamera
 import pyzwoasi as pza  # ! Camera Interfaceing Library CRUCIAL
+# pyright: reportIncompatibleMethodOverride=false
+# several base class functions are overwritten for convenience
 import cv2 as cv
 import numpy as np
-
-# import supporting libraries
-import matplotlib.pyplot as plt
-import sys
 import os
 import csv
 import toml
-from pathlib import Path
-from time import sleep, ctime, time
+from time import sleep, time
 from datetime import datetime as dt
 import shutil
+
+# import supporting libraries
+import matplotlib.pyplot as plt
+from pathlib import Path
+import sys
 
 
 class YooperCam(ZWOCamera):
@@ -122,9 +124,6 @@ class YooperCam(ZWOCamera):
         csv as hdf file?? (saving all con/roi|toml file will have most)
         '''
     
-        # get initial camera settings
-        first_data = self.getAllControls()
-
         # Initialize Camera "Log File"
         file_date = dt.now().strftime("%y_%m_%d")
         camFileName = str(file_date + "_cam.csv")
@@ -164,7 +163,7 @@ class YooperCam(ZWOCamera):
         print("Ending live view \n")
         cv.destroyAllWindows()
 
-    def zwo_shot(self,save=False, display=True, imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
+    def shot(self,save=False, display=True, imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
         '''
         Take an image view from the ASI Camera
         
@@ -173,25 +172,27 @@ class YooperCam(ZWOCamera):
         gui stuff
         csv as hdf file?? (saving all con/roi|toml file will have most)
         '''
-        with pza.ZWOCamera(0) as self:
-            # Config Settings
-            expSec = exposure
-            
-            # Capture and display image
-            print("Capturing Image")
-            x = self.shot(exposureTime_us=int(expSec * 10**6), imageType=1) # exp is in microsecs type 1 is rgb24
-            
+    
+        # Config Settings
+        expSec = exposure
+        
+        # Capture and display image
+        print("Capturing Image")
+        x = super().shot(exposureTime_us=int(expSec * 10**6), imageType=1) # exp is in microsecs type 1 is rgb24
+        
 
-            # Save Image
-            if save is True:
-                cv.imwrite(imgName, x)
-                print(f"image saved as {imgName}")
+        # Save Image
+        if save is True:
+            cv.imwrite(imgName, x)
+            print(f"image saved as {imgName}")
 
-            if display is True:
-                y = cv.resize(x,[int(self._maxWidth/4),int(self._maxHeight/4)])
-                cv.imshow('frame', y)
-                cv.waitKey(0)
-                cv.destroyAllWindows()
+        if display is True:
+            y = cv.resize(x,[int(self.width/4),int(self.height/4)])
+            cv.imshow('frame', y)
+            cv.waitKey(0)
+            cv.destroyAllWindows()
+        
+        return x
 
     def auroraDetection(self,*args,**kwargs):
         'Checks for aurora and returns a true or false string. Run \"isAurora\" for a bool'
@@ -457,31 +458,6 @@ class YooperCam(ZWOCamera):
             else:
                 value = val
             print(f"{con_name} was set to {value}")
-
-    ### Currently unused, has some integrations that need to be accounted for prior to removal.
-    def getAllControls(self):
-        '''
-        Read and save all camera controls for the getters/setters. 
-        
-        TODO: Best way to update necessary values.
-
-        Returns dictionary.
-        '''
-        
-        # ROI Components
-        start_x, start_y = pza.getStartPos(self._cameraID)
-        w, h, bins, img_type = self.roi
-
-        # Settings Components
-        numOfControls = pza.getNumOfControls(self._cameraIndex)
-        for controlIndex in range(numOfControls):
-            controlCaps = pza.getControlCaps(self._cameraIndex, controlIndex)
-            controlName = controlCaps.Name.decode('utf-8')
-
-            ValAuto = pza.getControlValue(self._cameraID, controlIndex)
-
-
-        return self._dictControlVals
 
     def liveView(self, dim=480):
         """
