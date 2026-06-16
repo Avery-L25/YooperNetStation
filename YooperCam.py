@@ -194,6 +194,39 @@ class YooperCam(ZWOCamera):
         
         return x
 
+    def writeDate(self):
+        '''
+        Method to save data to hdf5 or csv file given 
+        TODO:  Dict, list, flag, how to write data
+        This is not finished and is just the framework
+        '''
+        start_x, start_y, width, height, binning, imageType = self._roi
+
+        conDict = self._dictControlVals
+        # Initialize Camera "Log File"
+        file_date = dt.now().strftime("%y_%m_%d")
+        camFileName = str(file_date + "_cam.csv")
+        
+        if os.path.exists(camFileName) is False:
+            write_header = True
+        else:
+            write_header = False
+        
+        # if 
+        with open(camFileName, 'a', newline='') as cFile: 
+            cWriter = csv.DictWriter(cFile, fieldnames=self._dictControlID.keys())
+            
+            if write_header is True:
+                cWriter.writeheader()
+
+            cWriter.writerow(self._dictControlVals.items())
+
+
+
+        
+
+
+
     def auroraDetection(self,*args,**kwargs):
         'Checks for aurora and returns a true or false string. Run \"isAurora\" for a bool'
         isAuro = self.isAurora(*args,**kwargs)

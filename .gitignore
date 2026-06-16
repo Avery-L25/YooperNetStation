@@ -196,7 +196,7 @@ cython_debug/
 # Extra files that may not be implemented into the raspi
 SPRL_Observatory/Extra_Unused
 trial.py
-
+system.py
 
 *.pyc
 SPRL_Observatory/Sensors/__pycache__/

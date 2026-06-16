@@ -13,7 +13,7 @@ Offset = 5
 WB_B = 95  # DO NOT CHANGE WHITE BALANCE    # Default: 95
 WB_R = 70                                   # Default: 70
 
-[roi]
+[roi]                                       # Default is centered for a 20 MP 1" Sensor with a 2/3" Lens
 start_x = 1374                              # Default: 1374
 start_y = 464                               # Default: 464
 width = 2744    # Must be a multiple of 8   # Default: 2744
