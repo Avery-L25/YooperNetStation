@@ -225,3 +225,4 @@ SPRL_Observatory/Data_processing/transmission
 *.h5
 *.json
 *.env
+References/

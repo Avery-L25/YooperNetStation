@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+
+# sensor interfacing functions
+from Sensors.barom_therm_data_collection import temp_n_pres
+from Sensors.mag_data import mag_data
+from YooperCam import YooperCam
+
+# support functions
+import os
+import toml
+import datetime
+import time
+import numpy as np
+import schedule
+
+### Initialize Camera Object
+ycam = YooperCam(0)                                                         #! This likely will need to incorporate error handling/pza lib
+
+### Load Config Files
+wkdir = os.getcwd()
+config_file_path = wkdir + "/.YooperConfig.toml"
+yoop_config = toml.load(config_file_path)
+
+### Write Storage Locations
+img_folder_path = yoop_config['paths']['Camera_Images_Folder']    
+img_info_path = yoop_config['paths']['Camera_Info_File'] 
+sensor_file_path = yoop_config['paths']['Sensor_Data_File']
+# google_folder_id = yoop_config['paths']['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
+
+### initializes scheduling
+schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
+schedule.every().day.at("16:00").do(upload_data)  # upload hdf5 file at 4pm
+schedule.every().day.at("08:00").do(cam_off)  # turn camera off after 8am
+schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
+
+### Define Station functions
+def captureImage():
+    global ycam
+    pass
+
+def getSensorData():
+    '''
+    Get sensor data and write to appropriate file.
+    TODO: Secondary MAG data
+    '''
+    return
+    global
+    mag, pres, temp, gps = _readSensors()
+    sensor_dict = {'Mag X':mag[0],'Mag Y':mag[1],'Mag Z':mag[2],
+                   'Pressure':pres,'Temperature':temp,'GPS':gps}
+
+def _readSensors():
+    '''
+    Reads data from magnetometers, thermometer, barometer and returns their output.
+    TODO: GPS
+    '''
+
+    mag = mag_data()
+    temp, pres = temp_n_pres()
+    gps = None  # todo complete gps code
+
+    return mag, pres, temp, gps
+
+### Run program program on 1 second interval
+while __name__ == '__main__':
+    # runs any pending programs
+    schedule.run_pending()
+    time.sleep(1)

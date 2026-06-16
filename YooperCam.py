@@ -23,6 +23,8 @@ class YooperCam(ZWOCamera):
     '''
     Interface with a ZWO ASI camera.
 
+    TODO: File tracking as properties to be adjusted externally
+
     TODO Helper Functions:
         Configure from toml file.                                           #* Done!
         Configure given controllable/roi params, use defaults if not.       #* Done!
@@ -94,6 +96,8 @@ class YooperCam(ZWOCamera):
 
         # setup aurora detection params
         self._resetAuroraImages(self.width)
+        self._imgName = None
+        self._auroraFlag = False
 
         return None
 
@@ -163,19 +167,17 @@ class YooperCam(ZWOCamera):
         print("Ending live view \n")
         cv.destroyAllWindows()
 
-    def shot(self,save=False, display=True, imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
+    def shot(self,save=False, display=False,
+             imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
         '''
         Take an image view from the ASI Camera
-        
-        TODO: Everything
-        refresh rate
-        gui stuff
-        csv as hdf file?? (saving all con/roi|toml file will have most)
+        Takes kwargs save (bool), display (bool), imgName (string),
+        and exposure in seconds (float).
         '''
     
         # Config Settings
         expSec = exposure
-        
+        self._imgName = imgName   
         # Capture and display image
         print("Capturing Image")
         x = super().shot(exposureTime_us=int(expSec * 10**6), imageType=1) # exp is in microsecs type 1 is rgb24
@@ -194,16 +196,29 @@ class YooperCam(ZWOCamera):
         
         return x
 
-    def writeDate(self):
+    def writeData(self, imgName=False):
         '''
-        Method to save data to hdf5 or csv file given 
-        TODO:  Dict, list, flag, how to write data
-        This is not finished and is just the framework
-        '''
-        start_x, start_y, width, height, binning, imageType = self._roi
+        Method to save data to hdf5 or csv file given.
+        Writes the image name, time, exposure, gain, aurora flag, errors.
 
-        conDict = self._dictControlVals
-        # Initialize Camera "Log File"
+        TODO: Could add others such as resolution, file size, or other.
+        '''
+        pass
+        
+        # Get items to be written
+        if imgName is False:
+            imgName = self._imgName
+        cur_time = dt.now().strftime("%Y/%m/%d, %H:%M:%S")                  #? Should it be a str or datetime
+        exposure = self.exposure
+        gain = self.gain
+        aur_flag = self._auroraFlag
+        error = None                                                     # todo add error handling
+        
+        dict_to_write = {'Image Name':imgName, 'Timestamp':cur_time,     # todo add error to dict
+                         'Exposure':exposure, 'Gain':gain,
+                         'Aurora Flag':aur_flag}
+
+        # Initialize Camera "Log File"                                   # todo update file path management
         file_date = dt.now().strftime("%y_%m_%d")
         camFileName = str(file_date + "_cam.csv")
         
@@ -214,19 +229,17 @@ class YooperCam(ZWOCamera):
         
         # if 
         with open(camFileName, 'a', newline='') as cFile: 
-            cWriter = csv.DictWriter(cFile, fieldnames=self._dictControlID.keys())
+            cWriter = csv.DictWriter(cFile, fieldnames=dict_to_write.keys())
             
-            if write_header is True:
+            if write_header is True:                                        #! If we write config settings it could be here, otherwise a seperate log file?
                 cWriter.writeheader()
 
-            cWriter.writerow(self._dictControlVals.items())
+            cWriter.writerow(dict_to_write)
 
-
-
+    def writeConfig(self):
+        'Write the camera configuration to a file'
+        pass
         
-
-
-
     def auroraDetection(self,*args,**kwargs):
         'Checks for aurora and returns a true or false string. Run \"isAurora\" for a bool'
         isAuro = self.isAurora(*args,**kwargs)
@@ -300,7 +313,7 @@ class YooperCam(ZWOCamera):
 
         # !save image if we want
         # cv.imwrite('masked.jpg', masked_img)
-        
+        self._auroraFlag = bool(mse)
         return bool(mse)
 
     def configFromToml(self):
@@ -427,7 +440,6 @@ class YooperCam(ZWOCamera):
         for c,v in self._dictControlVals.items():
             print(f"{c:<25} {"|":<3} {v:<3}")
         return None
-
 
     def setControllables(self, Gain=None, Exposure=None, WB_R=None, WB_B=None,
                          Offset=None, BandWidth=None, Flip=None,
