@@ -8,7 +8,7 @@ import datetime
 
 def build_hdf(date, gps, temp, pres, mag, img, file):
     '''
-    Builds empty hdf5 file with XXX \'groups\' to write data too.
+    Builds hdf5 file with XXX \'groups\' to write data too.
     '''
     print('build hdf')
     with h5py.File(file, "w") as f:

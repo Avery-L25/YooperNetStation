@@ -226,3 +226,5 @@ SPRL_Observatory/Data_processing/transmission
 *.json
 *.env
 References/
+camera/
+Token_management/
