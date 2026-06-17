@@ -7,6 +7,7 @@ from YooperCam import YooperCam
 
 # support functions
 import os
+import sys
 import toml
 import datetime
 import time
@@ -27,16 +28,25 @@ img_info_path = yoop_config['paths']['Camera_Info_File']
 sensor_file_path = yoop_config['paths']['Sensor_Data_File']
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
 
-### initializes scheduling
-schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
-schedule.every().day.at("16:00").do(upload_data)  # upload hdf5 file at 4pm
-schedule.every().day.at("08:00").do(cam_off)  # turn camera off after 8am
-schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
+# ### initializes scheduling
+# schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
+# schedule.every().day.at("16:00").do(upload_data)  # upload hdf5 file at 4pm
+# schedule.every().day.at("08:00").do(cam_off)  # turn camera off after 8am
+# schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
 
 ### Define Station functions
 def captureImage():
+    '''
+    Takes all sky images and save them. Writes data about the camera.
+    '''
     global ycam
-    pass
+    return
+    while True:
+        ycam.shot(save=True)
+        ycam.writeData()
+        # add a wait, #? Should this be here or a class? Hand in hand with changing exposure.
+    
+    print('Capturing stopped')
 
 def getSensorData():
     '''
@@ -61,8 +71,14 @@ def _readSensors():
 
     return mag, pres, temp, gps
 
-### Run program program on 1 second interval
-while __name__ == '__main__':
-    # runs any pending programs
-    schedule.run_pending()
-    time.sleep(1)
+### Start Camera, Sensors functions
+try:
+    if __name__ == '__main__':
+        print("Starting YooperNet Station")
+        # Process(target=).start()                                                #* Set the target to be whichever method needs to be run
+        # Process(target=).start()
+        # Process(target=).start()
+        # todo Log start time
+except KeyboardInterrupt:
+    print('\nUser quit\n')
+    # todo Add log entry

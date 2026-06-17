@@ -7,20 +7,13 @@ import os
 import datetime
 
 
-def upload_data():  # Upload data to Google Drive
+def uploadFileToDrive(folder_id: str,file_path):  # Upload data to Google Drive
     '''
-    Upload data to the University of Michigans "CRABYSS" server.
+    Upload data to the google drive.
     '''
-    global hdf_file  # ! add path on server
-    folder_id = "1vgaHd2zrHlnLKV55_ARNKjABrqwS_hxM"
-    print('uploading data to the ... google drive')
-    upload_file_to_drive(hdf_file, folder_id)
-    # os.remove(hdf_file)
+    upload_file_to_drive(file_path, folder_id)
     get_direcs()
 
-    # * print("UPLOADING TO THE CRABYSS")
-    # todo os.system(f'rsync -ahP {hdf_path} *USER*@crabyss.engin.umich.edu:{directory to save}')
-    # ! ensure that the delete flag is here unless addressed seperately
 
 
 def get_direcs():  # Get working file
@@ -42,11 +35,11 @@ def get_direcs():  # Get working file
 
 def delete_files():
     '''
-    Deletes any files from before the previous day.
+    Deletes files after upload verification.
     '''
     pass
 
 while __name__ == '__main__':
-    # runs any pending programs
+    # runs any pending programs every hour to account for variable size thresholds                                                                                                                                                                 
     schedule.run_pending()
     time.sleep(60*60)
