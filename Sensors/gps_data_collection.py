@@ -62,8 +62,8 @@ class GPS():
             decimal = -decimal
         return decimal
 
-    def gpsData(self, gps_port: str, baud_rate: int):
-        with serial.Serial(gps_port, baud_rate, timeout=1) as serial_port:
+    def gpsData(self):
+        with serial.Serial(self.port, self.baud_rate, timeout=1) as serial_port:
             # Read a line from the GPS serial data
             data = serial_port.readline().decode('ascii',
                                                     errors='ignore').strip()
@@ -97,7 +97,7 @@ def main(gps_obj):
     try:
         while True:
             # Read a line from the GPS serial data
-            timestamp, lat, lon, distance, cumulative_distance = gps_obj.gpsData
+            timestamp, lat, lon, distance, cumulative_distance = gps_obj.gpsData()
 
             # Log the data to a CSV file
             with open(log_file, 'a') as f:

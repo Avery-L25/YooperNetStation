@@ -4,10 +4,6 @@ import subprocess
 import os.path
 from os.path import isfile, join
 import sys
-import toml
-import csv
-import h5py
-import time
 
 ### Assign paths
 #! Update to be in JSON
