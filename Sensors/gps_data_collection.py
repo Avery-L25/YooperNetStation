@@ -103,20 +103,21 @@ def main(gps_obj):
     try:
         while True:
             # Read a line from the GPS serial data
-            timestamp, lat, lon, distance, cumulative_distance = gps_obj.gpsData()
+            print(gps_obj.gpsData())
 
+            # region Output data
             # Log the data to a CSV file
-            with open(log_file, 'a') as f:
-                f.write(f"{timestamp},{lat},{lon},{distance:.2f},"
-                        f"{cumulative_distance:.2f}\n")
+            # with open(log_file, 'a') as f:
+            #     f.write(f"{timestamp},{lat},{lon},{distance:.2f},"
+            #             f"{cumulative_distance:.2f}\n")
 
-            # Print the information to the console
-            print(f"Timestamp: {timestamp}")
-            print(f"Latitude: {lat}")
-            print(f"Longitude: {lon}")
-            print(f"Distance: {distance:.2f} meters")
-            print(f"Cumulative Distance: {cumulative_distance:.2f}"
-                    " meters\n")
+            # # Print the information to the console
+            # print(f"Timestamp: {timestamp}")
+            # print(f"Latitude: {lat}")
+            # print(f"Longitude: {lon}")
+            # print(f"Distance: {distance:.2f} meters")
+            # print(f"Cumulative Distance: {cumulative_distance:.2f}"
+            #         " meters\n")
 
             time.sleep(1)
     except KeyboardInterrupt:

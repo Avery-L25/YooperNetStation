@@ -6,7 +6,9 @@
 #? should there be user inputs? what should they be?
 #? should this be a one stop shop? meaning code the services and scripts to
 #? written in this .sh file
-#! chmod for privilege 
+#! chmod for privilege
+# gelp
+
 # ============================================
 
 # ============================================
@@ -75,7 +77,7 @@ pkglist="dependencies.txt"
 PYTHON_REQS="requirements.txt"
 
 # Services / automation scripts
-SERVICEFILE="yoopernet.service"
+SERVICE_FILE="yoopernet.service"
 STARTER_SCRIPT="startup.sh"
 
 # Helpful Functions
@@ -107,7 +109,7 @@ fi
 # 1: Update and Upgrade
 log_info "Update"
 if ! $dry_run; then
-    sudo apt-get update 
+    sudo apt-get update
 fi
 log_info  "Upgrade"
 if ! $dry_run; then
@@ -125,7 +127,7 @@ if ! $dry_run; then
 
     } || { # catch
         log_error "Error"
-        # save log for exception 
+        # save log for exception
     }
 fi
 

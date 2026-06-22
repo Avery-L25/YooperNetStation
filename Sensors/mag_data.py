@@ -39,7 +39,8 @@ spi.open(0, 0)
 spi.mode = 0
 spi.max_speed_hz = 500000
 
-# region Set desired cycle count for each axis (default value: 200)
+# region  Cycle Count
+# Set desired cycle count for each axis (default value: 200)
 # Range of usable cycle count: 0 - 65536 (recommended: 30-400)
 # Relationship: Cycle count and TMRC jointly determines sampling rate.
 #               In general, the lower the cycle count, the higher the
@@ -72,7 +73,8 @@ spi.xfer2([QRM3100_CCYLSB, (desired_cycle & 0x00FF)])
 spi.xfer2([QRM3100_CCZMSB, (desired_cycle & 0xFF00) >> 8])
 spi.xfer2([QRM3100_CCZLSB, (desired_cycle & 0x00FF)])
 
-# region Write to TMRC to set MAXIMUM update rates for continuous
+# region Cnt Meas Mode
+# Write to TMRC to set MAXIMUM update rates for continuous
 # measurement mode (default setting 0x96)
 # Range of accepted TMRC values: 0x92 - 0x9F
 # Relationship: the lower the TMRC value, the higher the max sampling rate. The
@@ -142,7 +144,7 @@ def convert_to_signed_int(byte1, byte2, byte3):
 # -----------------------------------------------------------------------------
 # End of Moldwin mag initialization
 
-# region Greenland magnetometer
+# region Green Mag
 # =============================================================================
 # =============================================================================
 # Greenland Mag initialization below
@@ -169,11 +171,17 @@ def mag_data():
     # Moldwin Mag data collection and assignment
     readings = spi.xfer2([QRM3100_MX2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                           0x00, 0x00, 0x00])
+                          
     m_Bx = convert_to_signed_int(readings[1], readings[2], readings[3])
     m_By = convert_to_signed_int(readings[4], readings[5], readings[6])
     m_Bz = convert_to_signed_int(readings[7], readings[8], readings[9])
+    
+    print('Moldwin x: {0}'.format(m_Bx))
+    print('Moldwin y: {0}'.format(m_By))
+    print('Moldwin z: {0}'.format(m_Bz))
+    return [m_Bx, m_By, m_Bz]
 
-    # region Greenland Magnetometer 2
+    # region Green Mag Func
     # =========================================================================
     # =========================================================================
     # Greenland Mag data assignment
@@ -194,10 +202,6 @@ def mag_data():
     # =========================================================================
     # endregion
 
-    print('Moldwin x: {0}'.format(m_Bx))
-    print('Moldwin y: {0}'.format(m_By))
-    print('Moldwin z: {0}'.format(m_Bz))
-    return [m_Bx, m_By, m_Bz]
 
 
 if __name__ == '__main__':

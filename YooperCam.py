@@ -63,8 +63,8 @@ class YooperCam(ZWOCamera):
         self._dictImgType = {'RAW8': 0, 'RGB24': 1, 'RAW16': 2, 'Y8': 3}
         
         # setup class locations
-        self.img_folder = str()    
-        self.img_info_file = str()
+        self.img_folder = ''    
+        self.img_info_file = ''
 
         # setup controls
         numOfControls = pza.getNumOfControls(self._cameraIndex)
@@ -74,7 +74,6 @@ class YooperCam(ZWOCamera):
 
             ValAuto = pza.getControlValue(self._cameraID, controlIndex)
             setattr(self, controlName, ValAuto)
-
 
             #! May need to remove these  
             # Sets easy value managements
@@ -91,7 +90,8 @@ class YooperCam(ZWOCamera):
         
         # Complete ROI attributes
         self.start_x, self.start_y = pza.getStartPos(self._cameraID)
-        _, _, self.width, self.height, self.binning, self.imageType = self._roi
+        self.width, self.height, self.binning, self.imageType = self._roi[2:]
+        # _, _, self.width, self.height, self.binning, self.imageType = self._roi
         self.configFromToml()
 
         # setup aurora detection params
@@ -167,34 +167,69 @@ class YooperCam(ZWOCamera):
         print("Ending live view \n")
         cv.destroyAllWindows()
 
-    def shot(self,save=False, display=False,
+    def shot(self, save=False, display=False, return_img=False,
              imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
         '''
         Take an image view from the ASI Camera
         Takes kwargs save (bool), display (bool), imgName (string),
         and exposure in seconds (float).
+
+        Parameters
+        ----------
+        save : bool, defaults to False
+            Save the image in location set to YooperCam.
+        display : bool, defaults to False
+            Displays the full resolution image.        
+        return_img : bool, defaults to False
+            Returns image array.
+        imgName : str, defaults to "shot_%H_%M_%S.png" 
+            Name the saved image using the current time unless specified.
+        exposure : float, defaults to 1
+            Camera exposure in seconds, converted into microseconds for camera
+            operation.
+        
+        Returns
+        -------
+        Image array if 'return_img' param is specified as true
+        None if else
+
+        Examples
+        --------
+        >>> ycam.shot(save=True)
+        # image saved named using the time it was captured
+
+        >>> ycam.shot(display=True, exposure=10)
+        # image capture with 10 seconds of exposure is displayed to user screen
+
+        >>> ycam.shot(save=True,imgName='test.png')
+        # image saved with the specified name, 'test.png'
         '''
     
         # Config Settings
         expSec = exposure
         self._imgName = imgName   
-        # Capture and display image
+       
+        # Capture Image
         print("Capturing Image")
         x = super().shot(exposureTime_us=int(expSec * 10**6), imageType=1) # exp is in microsecs type 1 is rgb24
-        
-
+       
         # Save Image
         if save is True:
             cv.imwrite(imgName, x)
             print(f"image saved as {imgName}")
 
+        # Display Image
         if display is True:
             y = cv.resize(x,[int(self.width/4),int(self.height/4)])
             cv.imshow('frame', y)
             cv.waitKey(0)
             cv.destroyAllWindows()
         
-        return x
+        # Return Image Array 
+        if return_img is True:
+            return x
+        else:
+            return None
 
     def writeData(self, imgName=False):
         '''
@@ -269,6 +304,8 @@ class YooperCam(ZWOCamera):
 
         NOTE: If instead of inputing an image, it is assigned directly the
         compared \'pre\' image will not be the last camera image.
+
+        TODO: Fix pre-image assignment. We want to be able 
         '''
         # Ensure there is an image to work with
         if img is not None:
@@ -281,39 +318,47 @@ class YooperCam(ZWOCamera):
         
         pre = self.pre
 
-        # get rgb components as floats
+        ### get rgb components as floats
         b, g, r = cv.split(img)
         r1 = r * 1.0
         g1 = g * 1.0
         b1 = b * 1.0
 
-        # Mask "img" and "pre" to retrieve the green part, ignore white color
-        gbratio = cv.divide(b1, g1)
-        maskgbratio = cv.inRange(gbratio, 0.9, 1.3)
-        grratio = cv.divide(r1, g1)
-        maskgrratio = cv.inRange(grratio, 0.9, 1.3)
+        ### Create masks from current image
+        # Blue/Green ratio
+        gbratio = cv.divide(b1, g1)  #? blue / green
+        maskgbratio = cv.inRange(gbratio, 0.9, 1.3)  #? any cell with a b/g ratio between 0.9 and 1.3 is set to 255 
 
-        # create masks
-        mask1 = cv.compare(0.95*g, 1.0*b, cv.CMP_GT)
-        mask2 = cv.compare(0.95*g, 1.0*r, cv.CMP_GT)
-        maskgreendominant = cv.bitwise_and(mask1, mask2)
-        verygreen = cv.bitwise_and(maskgreendominant, cv.bitwise_not( cv.bitwise_and(maskgrratio, maskgbratio)))
+        # Red/Green ratio
+        grratio = cv.divide(r1, g1)  #! red / green
+        maskgrratio = cv.inRange(grratio, 0.9, 1.3)  #! any cell with a r/g ratio between 0.9 and 1.3 is set to 255
 
-        # get masked images
-        masked_img = cv.bitwise_and(img, img, mask=verygreen)
+        # Masks for dominant green
+        mask1 = cv.compare(0.95*g, 1.0*b, cv.CMP_GT)  #? If 95% of green is greater that 100% of blue set 1 otherwise 0
+        mask2 = cv.compare(0.95*g, 1.0*r, cv.CMP_GT)  #! If 95% of green is greater that 100% of red set 1 otherwise 0
+        maskgreendominant = cv.bitwise_and(mask1, mask2)  #* This sets each pixel to the minimum of the two masks. (0 anywhere green was is more present that red OR blue)
+
+        # Create strong green mask
+        neutralMask = cv.bitwise_and(maskgrratio, maskgbratio)  # mask for area that have similar values of rgb
+        inverseNeutral = cv.bitwise_not(neutralMask)  # Mask for areas that do not have similar rgb values
+        verygreen = cv.bitwise_and(maskgreendominant, inverseNeutral)  #* This shows only the areas where green is dominant over blue or red AND rgb is not similar
+
+        # Apply masks and get images
+        masked_img = cv.bitwise_and(img, img, mask=verygreen)  # Display the image only whre the verygreen mask values are
         masked_pre = cv.bitwise_and(pre, pre, mask=verygreen)
 
-        # updated params
+        # Update contained images
         self.masked = masked_img
         self.premask = masked_pre
         if pre_updated is False:
             self.pre = self.img
+        
         # Use mse to determine the changes in time
-        mse = np.linalg.norm(masked_img-masked_pre)
+        mask_img_diff = masked_img - masked_pre
+        norm_of_diff = np.linalg.norm(mask_img_diff)  # Returns the normal vector
+        mse = float(np.mean(mask_img_diff**2))  # Use a threshold instead?
 
-        # !save image if we want
-        # cv.imwrite('masked.jpg', masked_img)
-        self._auroraFlag = bool(mse)
+        self._auroraFlag = bool(norm_of_diff)  # currently any difference in the 'very green' region will be marked as a potential aurora
         return bool(mse)
 
     def configFromToml(self):
