@@ -47,6 +47,7 @@ def captureImage(expSec=30):
     while True:
         try:
             ycam.shot(save=True, exposure=expSec)
+            time.sleep(1)
         except pza.pyzwoasi.ASIError:
             print("Failed to get image, trying again.")
         # ycam.writeData()
@@ -95,8 +96,15 @@ if __name__ == '__main__':
 
     # Join Processes #! They are looped and won't join unless stop condition is added
     print("Processes running, waiting to join")
-    cam_proc.join()
-    sens_proc.join()
+    # On exit, terminate processes
+    try:
+        while True:
+            time.sleep(1)
+            pass
+    except KeyboardInterrupt:
+        cam_proc.terminate()
+        sens_proc.terminate()
+        print("Closing program")
     # Process(target=).start()                                       #todo stopping to reset file names or something else   
     # todo Log start time
 

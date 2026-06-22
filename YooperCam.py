@@ -132,7 +132,7 @@ class YooperCam(ZWOCamera):
         file_date = dt.now().strftime("%y_%m_%d")
         camFileName = str(file_date + "_cam.csv")
         if os.path.exists(camFileName) is False:
-            exit()
+            sys.exit()
         cFile = open(camFileName, 'a', newline='') 
 
         # Write data using dictionary
@@ -168,7 +168,7 @@ class YooperCam(ZWOCamera):
         cv.destroyAllWindows()
 
     def shot(self, save=False, display=False, return_img=False,
-             imgName=dt.now().strftime("shot_%H_%M_%S.png"),exposure=1):
+             imgName='',exposure=1):
         '''
         Take an image view from the ASI Camera
         Takes kwargs save (bool), display (bool), imgName (string),
@@ -207,6 +207,7 @@ class YooperCam(ZWOCamera):
     
         # Config Settings
         expSec = exposure
+        if imgName == '': imgName = dt.now().strftime(f"m%md%d_%H_%M_%S_exp{expSec}.png")
         self._imgName = imgName   
        
         # Capture Image
@@ -217,6 +218,7 @@ class YooperCam(ZWOCamera):
         if save is True:
             cv.imwrite(imgName, x)
             print(f"image saved as {imgName}")
+            shutil.move(imgName, str(self.img_folder))
 
         # Display Image
         if display is True:
