@@ -117,7 +117,7 @@ class YooperCam(ZWOCamera):
     def __getattr__(self, name):
         pass
 
-    def zwo_live(self, save=False):
+    def liveShots(self):
         '''
         Captures and saves images to save locations.
         
@@ -144,23 +144,16 @@ class YooperCam(ZWOCamera):
             
             # Capture image
             print("Capturing Image")
-            x = self.shot(exposureTime_us=expSec * 10**6, imageType=1) # exp is in microsecs type 1 is rgb24
+            x = self.shot(exposure=expSec, return_img=True) # exp is in microsecs  
             
 
             # Save Image and move to folder
-            if save is True:
-                curTime = dt.now()
-                imageName = dt.strftime(curTime, f"m%md%d_%H_%M_%S_exp{expSec}.png")
-                cv.imwrite(imageName, x)
-                print(f"image saved as {imageName}")
-                shutil.move(imageName, str(self.img_folder))
+            curTime = dt.now()
+            imageName = dt.strftime(curTime, f"m%md%d_%H_%M_%S_exp{expSec}.png")
+            cv.imwrite(imageName, x)
+            print(f"image saved as {imageName}")
+            shutil.move(imageName, str(self.img_folder))
             
-            # Pause/End
-            y = cv.resize(x,[int(self._maxWidth/4),int(self._maxHeight/4)])
-            cv.imshow('frame', y)
-
-            if cv.waitKey == ord('q'):
-                break
 
             sleep(5)  
         
