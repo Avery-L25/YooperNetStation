@@ -38,7 +38,7 @@ sensor_file_path = yoop_config['paths']['Sensor_Data_File']
 # schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
 
 ### Define Station functions
-def captureImage():
+def captureImage(expSec=30):
     '''
     Takes all sky images and save them. Writes data about the camera.
     '''
@@ -46,7 +46,7 @@ def captureImage():
     print("Start Image captureing loop")
     while True:
         try:
-            ycam.shot(save=True)
+            ycam.shot(save=True, exposure=expSec)
         except pza.pyzwoasi.ASIError:
             print("Failed to get image, trying again.")
         # ycam.writeData()
@@ -83,11 +83,25 @@ def _readSensors():
 ### Start Camera, Sensors functions
 try:
     if __name__ == '__main__':
+
+        # Define Processes
+        cam_proc = Process(target=captureImage)                                #* Set the target to be whichever method needs to be run
+        sens_proc = Process(target=getSensorData)                           #todo Can add a stop condition controlled by the file manager
+        
+        # Start Processes
         print("Starting YooperNet Station")
-        Process(target=captureImage).start()                                #* Set the target to be whichever method needs to be run
-        Process(target=getSensorData).start()                            #todo Can add a stop condition controlled by the file manager
+        cam_proc.start()
+        sens_proc.start()
+
+        # Join Processes #! They are looped and won't join unless stop condition is added
+        print("Processes running, waiting to join")
+        cam_proc.join()
+        sens_proc.join()
         # Process(target=).start()                                       #todo stopping to reset file names or something else   
         # todo Log start time
+
+        # Once processes end
+        print("Processes finished.\nWaiting...")
 except KeyboardInterrupt:
     print('\nUser quit\n')
     # todo Add log entry
