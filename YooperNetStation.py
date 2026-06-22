@@ -6,6 +6,7 @@ from Sensors.mag_data import mag_data
 from YooperCam import YooperCam
 
 # support functions
+import pyzwoasi as pza
 import os
 import sys
 import toml
@@ -44,8 +45,11 @@ def captureImage():
     global ycam
     print("Start Image captureing loop")
     while True:
-        ycam.shot(save=True)
-        ycam.writeData()
+        try:
+            ycam.shot(save=True)
+        except pza.pyzwoasi.ASIError:
+            print("Failed to get image, trying again.")
+        # ycam.writeData()
         # add a wait, #? Should this be here or a class? Hand in hand with changing exposure.
     
     print('Capturing stopped')
