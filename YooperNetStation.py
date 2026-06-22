@@ -12,7 +12,7 @@ import toml
 import datetime
 import time
 import numpy as np
-import schedule
+# import schedule
 from multiprocessing import Process
 
 ### Initialize Camera Object
@@ -42,7 +42,7 @@ def captureImage():
     Takes all sky images and save them. Writes data about the camera.
     '''
     global ycam
-    
+    print("Start Image captureing loop")
     while True:
         ycam.shot(save=True)
         ycam.writeData()
@@ -62,6 +62,7 @@ def getSensorData():
         sensor_dict = {'Mag X':mag[0],'Mag Y':mag[1],'Mag Z':mag[2],
                     'Pressure':pres,'Temperature':temp,'GPS':gps}
         print(sensor_dict)
+        time.sleep(5)
 
 def _readSensors():
     '''
