@@ -515,7 +515,7 @@ class YooperCam(ZWOCamera):
                 raise KeyError("Incorrect control type.")
             elif len(val) > 3:
                 raise KeyError("Dataset should include 1 or 2 value (integer value, auto value)")
-            setattr(self, key, val[0])
+            
             self._setControllableValue(con=key, val=val[0], auto=val[1])
 
         return pass_args
@@ -530,24 +530,40 @@ class YooperCam(ZWOCamera):
         TODO: ensure value/auto is allowed
         does auto even work
         '''
-        # global self
+
+        # Make dictionary for access to controllable name and ID
         dicty = self._dictControlID
         key_dict = {v: k for k, v in dicty.items()}
         
-        if type(con) is not int:
+        # Get both controllable name and ID
+        if type(con) is str:
+            # If the control is a string collect the name before getting ID
             con_name = con
             con = dicty[con]
         elif type(con) is int:
+            # If control is an integer [ID#] get the controllable name
             con_name = key_dict[con]
         else:
             print("Check that value \"con\" is a controllable value")
             exit()
 
         if val is None:
-            print(f"{con_name} is {pza.getControlValue(0,con)} [(Value, Auto)]")
+            # If the method is called without a value, print information instead
+            print(f"{con_name} is {pza.getControlValue(0,con)} [(Value, Auto)]"
+                  f"\nValue was not changed.")
         else:
-            pza.setControlValue(0, con, val, auto)
-            self._dictControlVals[con] = val
+            # Set controllable value to camera
+            try:
+                pza.setControlValue(self._cameraID, con, val, auto)  # update setting
+            except pza.ASIError as e_msg:
+                # handle controls that cannot be set to camera directlly
+                print(f"Unable to set controllable {con_name.upper()} directly.\n"
+                      f"{e_msg}\nValue is assigned to YooperCam as attribute.")
+
+            self._dictControlVals[con_name] = val  # update value in dictionary
+            setattr(self, con_name, val) # update attribute value
+
+            # Print output value, value is auto if the setting was set to auto
             if auto == True:
                 value = "Auto"
             else:
