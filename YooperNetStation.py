@@ -81,32 +81,33 @@ def _readSensors():
     return mag, pres, temp, gps
 
 ### Start Camera, Sensors functions
-try:
-    if __name__ == '__main__':
+# try:
+if __name__ == '__main__':
 
-        # Define Processes
-        cam_proc = Process(target=captureImage)                                #* Set the target to be whichever method needs to be run
-        sens_proc = Process(target=getSensorData)                           #todo Can add a stop condition controlled by the file manager
-        
-        # Start Processes
-        print("Starting YooperNet Station")
-        cam_proc.start()
-        sens_proc.start()
+    # Define Processes
+    cam_proc = Process(target=captureImage)                                #* Set the target to be whichever method needs to be run
+    sens_proc = Process(target=getSensorData)                           #todo Can add a stop condition controlled by the file manager
+    
+    # Start Processes
+    print("Starting YooperNet Station")
+    cam_proc.start()
+    sens_proc.start()
 
-        # Join Processes #! They are looped and won't join unless stop condition is added
-        print("Processes running, waiting to join")
-        cam_proc.join()
-        sens_proc.join()
-        # Process(target=).start()                                       #todo stopping to reset file names or something else   
-        # todo Log start time
+    # Join Processes #! They are looped and won't join unless stop condition is added
+    print("Processes running, waiting to join")
+    cam_proc.join()
+    sens_proc.join()
+    # Process(target=).start()                                       #todo stopping to reset file names or something else   
+    # todo Log start time
 
-        # Once processes end
-        print("Processes finished.\nWaiting...")
-except KeyboardInterrupt:
-    try:
-        cam_proc.terminate()
-        sens_proc.terminate()
-    except NameError:
-        pass    
-    print('\nUser quit\n')
-    # todo Add log entry
+    # Once processes end
+    print("Processes finished.\nWaiting...")
+# except KeyboardInterrupt:
+#     try:
+#         cam_proc.terminate()
+#         sens_proc.terminate()
+#     except NameError:
+#         pass    
+#     print('\nUser quit\n')
+#     sys.exit()
+#     # todo Add log entry
