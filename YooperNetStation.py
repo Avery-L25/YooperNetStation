@@ -103,5 +103,10 @@ try:
         # Once processes end
         print("Processes finished.\nWaiting...")
 except KeyboardInterrupt:
+    try:
+        cam_proc.terminate()
+        sens_proc.terminate()
+    except NameError:
+        pass    
     print('\nUser quit\n')
     # todo Add log entry
