@@ -376,6 +376,7 @@ class YooperCam(ZWOCamera):
         roi = yoop_config['roi']
 
         self.setROI(**roi)
+        self.setControllables(**controls)
 
         # Write Storage Locations
         self.img_folder = yoop_config['paths']['Camera_Images_Folder']    
@@ -503,8 +504,12 @@ class YooperCam(ZWOCamera):
             if val is int or str:
                 # If one arg is passed assign into list before config
                 if str(val).lower() == "auto":
-                    val = [getattr(self,key), 1]
+                    # If a controllable is set to auto, keep the assigned value 
+                    # and update the auto portion to true [1]  
+                    val = [getattr(self,key)[0], 1]
                 else:
+                    # If the controllable is not auto, use assigned value and 
+                    # set auto to false [0]
                     val = [val, 0]
             elif val is not tuple or list:
                 raise KeyError("Incorrect control type.")

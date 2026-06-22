@@ -162,7 +162,7 @@ def convert_to_signed_int(byte1, byte2, byte3):
 # endregion
 
 
-def mag_data():
+def mag_data(write_out=False):
 
     # Ensure measurement is complete on all axis for Moldwin Mag
     while (spi.xfer2([QRM3100_Status, 0x00])[1] >> 7) != 1:
@@ -176,9 +176,10 @@ def mag_data():
     m_By = convert_to_signed_int(readings[4], readings[5], readings[6])
     m_Bz = convert_to_signed_int(readings[7], readings[8], readings[9])
     
-    print('Moldwin x: {0}'.format(m_Bx))
-    print('Moldwin y: {0}'.format(m_By))
-    print('Moldwin z: {0}'.format(m_Bz))
+    if write_out is True:
+        print('Moldwin y: {0}'.format(m_By))
+        print('Moldwin z: {0}'.format(m_Bz))
+        print('Moldwin x: {0}'.format(m_Bx))
     return [m_Bx, m_By, m_Bz]
 
     # region Green Mag Func
