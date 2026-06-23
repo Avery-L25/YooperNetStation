@@ -20,7 +20,11 @@ Installation Script in progress.
    necessary packages/libraries, and setup the yoopernet service.
 3. Configure toml file to customize camera settings, file locations, 
    and user data.
-4. 
+4. Run `rclone config` and follow these instructions to setup rclone 
+   to upload folders and files: https://rclone.org/drive/
+   NOTE: You can use a seperate device to authorize rclone without 
+   the need to log in on the device to be set up.
+5.
 
 **Will need to put in google folder id**
 

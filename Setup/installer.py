@@ -8,7 +8,7 @@ import sys
 ### Assign paths
 #! Update to be in JSON
 # Project Vars
-PROJECT_NAME="SPRL_Observatory"
+PROJECT_NAME="YooperNetStation"
 USERNAME=os.environ['LOGNAME']
 PROJECT_DIR=f"/home/{USERNAME}/{PROJECT_NAME}"
 VENV_NAME="venv"
@@ -25,24 +25,35 @@ SERVICE_DIR=NotImplemented
 SERVICE_FILE="yoopernet.service"
 STARTER_SCRIPT="startup.sh"                                                 #! UPDATE THIS
 
+# Conditions
+make_venv = False
+all_check_yes = False
+
 # Run commands from strings
 def runStr(cmd: str):
     command = cmd.split(' ')
     subprocess.run(command, check=True)
 
 # Get user
-def stopOrGo(msg='continue',override=False):  # -> bool:
+def stopOrGo(msg='continue', cnt_override=False, pass_override=False):  # -> bool:
     'Get user input to continue setup'
     usr_in = None
-    if override is True:
-        # This is to pass if flag or otherwise an not needed for whatever.
-        return
+    if pass_override is True:
+        # If the it is automatically passed immediately return false to pass action.
+        return False
+    elif cnt_override is True:
+        # If the continute override is true, return True to continue operation unless marked specifically to pass.
+        return True
     while True:
         usr_in = input(f"Do you wish to {msg}? y or n\n")
         if usr_in.lower() in ['y', 'yes']:
-            break
+            return True
         elif usr_in.lower() in ['n', 'no']:
-            break
+            return False
+        else:
+            # !This is for testing the operation of the system while developing
+            print("Exiting")
+            sys.exit()
 
 # Logging/Output functions
 class bcolors():
@@ -109,18 +120,21 @@ runStr("sudo apt-get upgrade -y")
 
 # 2: Get dependencies
 log("Getting Dependencies")
-try:
-    runStr(f"sudo apt-get install {pkglist}")
-    log("Success")
-except subprocess.CalledProcessError as e:
-    error(f"Error occurred while attempting to install dependencies."
-          + f"\nError Code: {bold(e.returncode)}")  #! No error code returning.
-    pass
+if stopOrGo(msg=f"install system dependencies from {pkglist}",
+            cnt_override=all_check_yes):
+
+    try:
+        runStr(f"sudo apt-get install {pkglist}")
+        log("Success")
+    except subprocess.CalledProcessError as e:
+        error(f"Error occurred while attempting to install dependencies."
+            + f"\nError Code: {bold(e.returncode)}")  #! No error code returning.
+        pass
 
 # ============================================
 # Setup Python
 # ============================================
-stopOrGo()
+
 # 1: Update repository
 log(f"Pulling to latest commit to: \"{PROJECT_DIR}\"")
 runStr(f"git -C {PROJECT_DIR} pull")
@@ -128,18 +142,25 @@ success( "Repository is up to date with main")
 
 
 # # 2: Create virtual Environment
-if os.path.exists(VENV_DIR):
-    log(f"Virtual Environment \"{VENV_NAME}\" exists, continuing install.")
-else:
-    log( f"Creating virtual python environment: \"{VENV_DIR}\"")
-    runStr(f"sudo python -m venv \"{VENV_DIR}\"")
-    success(f"Succesfully created {VENV_NAME}")
+make_venv = stopOrGo(msg=f"create virtual environment {VENV_NAME} on this device",
+                     cnt_override=all_check_yes, pass_override=make_venv)
+if make_venv is True:
+    if os.path.exists(VENV_DIR):
+        log(f"Virtual Environment \"{VENV_NAME}\" exists, continuing install.")
+    else:
+        log( f"Creating virtual python environment: \"{VENV_DIR}\"")
+        runStr(f"sudo python -m venv \"{VENV_DIR}\"")
+        success(f"Succesfully created {VENV_NAME}")
 
 
 # 3: Install Libraries
 log(f"Installing libaries for YooperNET from {PYTHON_REQS}")
 try:
-    runStr(f"source {VENV_DIR}/bin/activate")                                   #! Can we do this without ipython for station
+    if make_venv is True:
+        # Activate venv if device is using one
+        runStr(f"source {VENV_DIR}/bin/activate")                                   #! Can we do this without ipython for station
+        
+    # Install the libraries to specified version using the requirements file
     runStr(f"pip install -r {PYTHON_REQS}")
     success(f"Python requirement successfully installed")
 except subprocess.CalledProcessError as e:
@@ -158,11 +179,17 @@ sys.exit()
 while True:
     input('There is no escape, quit now.')
 log(f"Setting up {SERVICE_FILE}")
+
+# Put service file in proper directory
 runStr(f"sudo mv {SERVICE_FILE} {SERVICE_DIR}")
 success(f"Moved {SERVICE_FILE} to {SERVICE_DIR}")
+
+# Start service file now and enable device to run system on its own
 runStr(f"sudo systemctl start {SERVICE_FILE}")
-runStr(f"sudo systemctl enable {SERVICE_FILE}")
-success(f"{SERVICE_FILE} successfully starte!")
+if stopOrGo(msg="enable service now",cnt_override=all_check_yes):
+    # enable service to start on device power on.
+    runStr(f"sudo systemctl enable {SERVICE_FILE}")
+success(f"{SERVICE_FILE} successfully started!")
 
 log('Run testing script before operation begins')
 

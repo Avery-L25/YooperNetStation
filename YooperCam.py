@@ -57,41 +57,41 @@ class YooperCam(ZWOCamera):
 
         ZWOCamera.__init__(self, *args, **kwargs)
 
-        # setup dictionaries
+        # Dictionaries to help view info
         self._dictControlVals = {}
         self._dictControlFacts = {}
+        # Dictionary to convert image type to ID number
         self._dictImgType = {'RAW8': 0, 'RGB24': 1, 'RAW16': 2, 'Y8': 3}
         
         # setup class locations
         self.img_folder = ''    
         self.img_info_file = ''
 
-        # setup controls
+        # Assign controls to dictionary and attribute of object
         numOfControls = pza.getNumOfControls(self._cameraIndex)
         for controlIndex in range(numOfControls):
+            #? Get control info from ZWO SDK
             controlCaps = pza.getControlCaps(self._cameraIndex, controlIndex)
             controlName = controlCaps.Name.decode('utf-8')
 
+            # Get the control value (value[int], auto[bool])
             ValAuto = pza.getControlValue(self._cameraID, controlIndex)
-            setattr(self, controlName, ValAuto)
+            setattr(self, controlName, ValAuto)  # assign attribute to object
 
             #! May need to remove these  
-            # Sets easy value managements
-            self._dictControlFacts[controlName] = ValAuto
+            # Fill dictionaries to see values of each control
+            self._dictControlFacts[controlName] = ValAuto                     
             if ValAuto[1] is True:
                 # todo make an auto feature
                 self._dictControlVals[controlName] = 'Auto'
             else:
                 self._dictControlVals[controlName] = ValAuto[0]
-
-
-            # pza.setControlValue(cameraID, controlType, value, auto)
-            # self.__setattr__("WB_R", 9)
         
-        # Complete ROI attributes
+        # Set ROI attributes to object
         self.start_x, self.start_y = pza.getStartPos(self._cameraID)
         self.width, self.height, self.binning, self.imageType = self._roi[2:]
-        # _, _, self.width, self.height, self.binning, self.imageType = self._roi
+
+        # Configure object ROI and Controls from toml file
         self.configFromToml()
 
         # setup aurora detection params
@@ -117,15 +117,23 @@ class YooperCam(ZWOCamera):
     def __getattr__(self, name):
         pass
 
-    def liveShots(self):
+    def liveShots(self, exposure = 1):
         '''
-        Captures and saves images to save locations.
+        Captures and saves images to images folder.
+         Parameters
+        ----------
+        exposure : float, defaults to 1
+            Camera exposure in seconds, converted into microseconds for camera
+            operation.
         
-        TODO: Everything
-        refresh rate
-        gui stuff
-        update exposure
-        csv as hdf file?? (saving all con/roi|toml file will have most)
+        Returns
+        -------
+        None 
+
+        Examples
+        --------
+        >>> ycam.liveShots(exposure=10)
+        # images saved with exposure time of 10 seconds
         '''
     
         # Initialize Camera "Log File"
@@ -140,18 +148,19 @@ class YooperCam(ZWOCamera):
         while True:
             
             # Config Settings
-            expSec = 1  
+              
             
             # Capture image
             print("Capturing Image")
-            x = self.shot(exposure=expSec, return_img=True) # exp is in microsecs  
+            x = self.shot(exposure=exposure, return_img=True) # exp is in microsecs  
             
 
             # Save Image and move to folder
             curTime = dt.now()
-            imageName = dt.strftime(curTime, f"m%md%d_%H_%M_%S_exp{expSec}.png")
-            cv.imwrite(imageName, x)
-            print(f"image saved as {imageName}")
+            imageName = dt.strftime(curTime, f"m%md%d_%H_%M_%S_exp{exposure}.png")
+            img_success = cv.imwrite(imageName, x)
+            if img_success:
+                print(f"image saved as {imageName}")
             shutil.move(imageName, str(self.img_folder))
             
 
@@ -271,7 +280,10 @@ class YooperCam(ZWOCamera):
         pass
         
     def auroraDetection(self,*args,**kwargs):
-        'Checks for aurora and returns a true or false string. Run \"isAurora\" for a bool'
+        '''
+        Checks for aurora and returns a true or false string. 
+        Run \"isAurora\" for a bool
+        '''
         isAuro = self.isAurora(*args,**kwargs)
         if isAuro is True:
             return "Aurora Present"
@@ -370,6 +382,7 @@ class YooperCam(ZWOCamera):
         controls = yoop_config['controllables']
         roi = yoop_config['roi']
 
+        # Pass Values as kwargs to respect config functions
         self.setROI(**roi)
         self.setControllables(**controls)
 
@@ -379,6 +392,7 @@ class YooperCam(ZWOCamera):
 
     @ZWOCamera.roi.getter
     def roi(self):
+        # override ZWOCamera roi to output a clean display
         'Prints ROI info to terminal'
         print (f" {"start_x":<9}  {"|":<3}  {self.start_x:<3}{"\n"}"
                 f" {"start_y":<9}  {"|":<3}  {self.start_y:<3}{"\n"}"
@@ -390,6 +404,7 @@ class YooperCam(ZWOCamera):
 
     @property
     def _roi(self):
+        # Returns the values instead of a string
         '''
         Returns Region of Interest Parameters as:
         (start_x, start_y, width, height, binning, imageType)
@@ -439,14 +454,12 @@ class YooperCam(ZWOCamera):
         if height    is None:   height      = self.height
         if start_x   is None:   start_x     = self.start_x
         if start_y   is None:   start_y     = self.start_y
-        
-        if imageType is str:
-            imageType = self._dictImgType[imageType.upper()]
-        
+                
         # Check for correct regional parameters
         width_check  = (self._maxWidth/binning >= start_x + width)
         height_check = (self._maxHeight/binning >= start_y + height)
         
+        ### That parameters fit into camera requirements
         # if binning < 1 or binning > max(self._supportedBins):
         #     raise ValueError(f"Binning must fit in camera range: 1 - {max(self._supportedBins)}")
         if width  % 8 != 0:
@@ -461,17 +474,19 @@ class YooperCam(ZWOCamera):
             raise ValueError("The binned sensor combined sensor width must "
                              "respect the following rule:\n"
                              "maxWidth/binning >= start_x + width")
-        
+
+        # If imageType is a string (ie. "RGB24") use dict to find ID#
         if type(imageType) is str:
             imageType = self._dictImgType[imageType.upper()]
 
+        # Update attributes for current roi values
         roi_params = {'width': width, 'height': height, 'start_x': start_x,
                       'start_y': start_y, 'binning': binning, 'imageType': imageType}
 
         for k, v in roi_params.items():
             setattr(self, k, v)
 
-        
+        # update values in camera
         pza.setStartPos(self._cameraIndex, start_x, start_y)
         pza.setROIFormat(self._cameraIndex, width, height, binning, imageType)
 
@@ -491,10 +506,12 @@ class YooperCam(ZWOCamera):
         Assign controllable camera parameters
         '''
         
+        # Get all local variables and filter for controllables
         all_args = locals()
         all_args.pop('self')
         pass_args = {k:v for k, v in all_args.items() if v is not None}
 
+        # for each controllable updated, update attribute and camera setting
         for key, val in pass_args.items():
             if val is int or str:
                 # If one arg is passed assign into list before config

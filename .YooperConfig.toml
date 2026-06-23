@@ -22,9 +22,14 @@ binning = 1                                 # Default: 1
 imageType = "RGB24"                         # Default: "RGB24"
 
 [paths]
-Camera_Images_Folder="/home/USER/SPRL_Observatory/Data/camera_images" 
-Camera_Info_File="/home/USER/SPRL_Observatory/Data/image_info_files"
-Sensor_Data_File="/home/USER/SPRL_Observatory/Data/sensor_files"
+Camera_Images_Collection="/Data/camera_images/" 
+Camera_Info_Folder="/Data/image_info_files/"
+Sensor_Data_Folder="/Data/sensor_files/"
 GDrive_Folder_ID=0
+
+[formats]
+Image_Folder_Format ="%Y_%m_%d_Images"
+Camera_Info_Format  ="%Y_%m_%d_Cam_Info"
+Sensor_Data_Format  ="%Y_%m_%d_Sensor_Data"
 
 [passkeys]
