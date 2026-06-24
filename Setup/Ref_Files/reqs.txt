@@ -17,7 +17,6 @@ binho-host-adapter==0.1.6
 blinker==1.9.0
 board==1.0
 cachetools==5.5.2
-camera_zwo_asi==1.0.4
 certifi==2025.7.14
 cffi==2.0.0
 charset-normalizer==3.4.2
@@ -63,7 +62,6 @@ matplotlib==3.10.3
 matplotlib-inline==0.1.7
 nest-asyncio==1.6.0
 ninja==1.13.0
-nptyping==2.5.0
 numpy==2.5.0
 oauthlib==3.3.1
 opencv-python==4.11.0.86

@@ -26,8 +26,13 @@ Camera_Images_Collection="/Data/camera_images/"
 Camera_Info_Folder="/Data/image_info_files/"
 Sensor_Data_Folder="/Data/sensor_files/"
 GDrive_Folder_ID=0
+Token_Path=0
+Credits_Path=0
 
 [formats]
+Data_Folder         ="%Y_%m_%d_Data"
+Image_Name_Format   ="%Y_%m_%d_exp"
+Image_Extension     =".png"
 Image_Folder_Format ="%Y_%m_%d_Images"
 Camera_Info_Format  ="%Y_%m_%d_Cam_Info"
 Sensor_Data_Format  ="%Y_%m_%d_Sensor_Data"

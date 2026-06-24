@@ -19,10 +19,10 @@ wkdir = os.getcwd()
 config_file_path = wkdir + "/.YooperConfig.toml"
 yoop_config = toml.load(config_file_path)
 
-### Write Storage Locations
-img_folder_path = yoop_config['paths']['Camera_Images_Folder']    
-img_info_path = yoop_config['paths']['Camera_Info_File'] 
-sensor_file_path = yoop_config['paths']['Sensor_Data_File']
+# ### Write Storage Locations
+# img_folder_path = yoop_config['paths']['Camera_Images_Folder']    
+# img_info_path = yoop_config['paths']['Camera_Info_File'] 
+# sensor_file_path = yoop_config['paths']['Sensor_Data_File']
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
 
 

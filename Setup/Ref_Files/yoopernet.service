@@ -5,10 +5,10 @@ After=multi-user.target
 
 [Service]
 Type=exec
-WorkingDirectory=/home/yooperobs/SPRL_Observatory
-ExecStart=/home/yooperobs/startup.sh
-User=yooperobs
-Restart=aways
+WorkingDirectory=/home/yoopernet/YooperNetStation
+ExecStart=/etc/bin/python /home/yoopernet/YooperNetStation/whatever_script.py
+User=yoopernet
+Restart=always
 RestartSec=3s
 
 [Install]

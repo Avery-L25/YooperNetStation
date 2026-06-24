@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# declare the camera as a python path to directly grab the appropriate 
-# functions
-export PYTHONPATH=/home/yooperobs/SPRL_Observatory/Sensors/camera/
-
 # run python directly
-/home/yooperobs/py_env/bin/python /home/yooperobs/SPRL_Observatory/system.py
+/usr/bin/python /home/yoopernet/YooperNetStation/system.py # & /usr/bin/python /home/yoopernet/YooperNetStation/system.py
+# can call seperate scripts
+# called this way an error will only stop one script and the service likely wont restart

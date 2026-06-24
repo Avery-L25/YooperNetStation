@@ -120,7 +120,9 @@ class YooperCam(ZWOCamera):
     def liveShots(self, exposure = 1):
         '''
         Captures and saves images to images folder.
-         Parameters
+        A simple loop using the built in 'shot' method.
+        
+        Parameters
         ----------
         exposure : float, defaults to 1
             Camera exposure in seconds, converted into microseconds for camera
@@ -137,18 +139,15 @@ class YooperCam(ZWOCamera):
         '''
     
         # Initialize Camera "Log File"
-        file_date = dt.now().strftime("%y_%m_%d")
-        camFileName = str(file_date + "_cam.csv")
-        if os.path.exists(camFileName) is False:
-            sys.exit()
-        cFile = open(camFileName, 'a', newline='') 
+        # file_date = dt.now().strftime("%y_%m_%d")
+        # camFileName = str(file_date + "_cam.csv")
+        # if os.path.exists(camFileName) is False:
+        #     sys.exit()
+        # cFile = open(camFileName, 'a', newline='') 
 
         # Write data using dictionary
-        cWriter = csv.DictWriter(cFile, fieldnames=self._dictControlID.keys())
+        # cWriter = csv.DictWriter(cFile, fieldnames=self._dictControlID.keys())
         while True:
-            
-            # Config Settings
-              
             
             # Capture image
             print("Capturing Image")
@@ -157,7 +156,7 @@ class YooperCam(ZWOCamera):
 
             # Save Image and move to folder
             curTime = dt.now()
-            imageName = dt.strftime(curTime, f"m%md%d_%H_%M_%S_exp{exposure}.png")
+            imageName = dt.strftime(curTime, f"{self.img_name_format}{exposure}_live.png")
             img_success = cv.imwrite(imageName, x)
             if img_success:
                 print(f"image saved as {imageName}")
@@ -170,7 +169,7 @@ class YooperCam(ZWOCamera):
         cv.destroyAllWindows()
 
     def shot(self, save=False, display=False, return_img=False,
-             imgName='',exposure=1):
+             imgName='', path='', exposure=1):
         '''
         Take an image view from the ASI Camera
         Takes kwargs save (bool), display (bool), imgName (string),
@@ -206,21 +205,27 @@ class YooperCam(ZWOCamera):
         >>> ycam.shot(save=True,imgName='test.png')
         # image saved with the specified name, 'test.png'
         '''
-    
-        # Config Settings
-        expSec = exposure
-        if imgName == '': imgName = dt.now().strftime(f"m%md%d_%H_%M_%S_exp{expSec}.png")
-        self._imgName = imgName   
+        # Get locations and foormats
+        main_folder = self.img_folder              
        
+        # Config Settings
+        expSec = exposure                              
+        #{something with date }{exposure}{.png or other} ---> "2026_05_24_exp10.png" or "26_06_12_shot12.jpg" 
+        if imgName == '': imgName = dt.now().strftime(f"{self.img_name_format}{expSec}{self.img_extension}")
+        if path == '': path = f"{main_folder}/{imgName}"
+        self._imgName = imgName
+    
         # Capture Image
         print("Capturing Image")
         x = super().shot(exposureTime_us=int(expSec * 10**6), imageType=1) # exp is in microsecs type 1 is rgb24
        
         # Save Image
         if save is True:
-            cv.imwrite(imgName, x)
-            print(f"image saved as {imgName}")
-            shutil.move(imgName, str(self.img_folder))
+            # write image to image folder
+            cv.imwrite(path, x)
+            print(f"image saved as {imgName} to {main_folder}")
+            # if necessary move image to folder
+            # shutil.move(imgName, str(self.img_folder))
 
         # Display Image
         if display is True:
@@ -376,19 +381,25 @@ class YooperCam(ZWOCamera):
         '''
         # Load Config Files
         config_file_path = os.getcwd() + "/.YooperConfig.toml"
-        yoop_config = toml.load(config_file_path)
+        yoop_config      = toml.load(config_file_path)
 
         # Setup Default Values
         controls = yoop_config['controllables']
-        roi = yoop_config['roi']
+        roi      = yoop_config['roi']
 
         # Pass Values as kwargs to respect config functions
         self.setROI(**roi)
         self.setControllables(**controls)
 
         # Write Storage Locations
-        self.img_folder = yoop_config['paths']['Camera_Images_Folder']    
-        self.img_info_file = yoop_config['paths']['Camera_Info_File'] 
+        self.img_folder     = yoop_config['paths']['Camera_Images_Collection']    
+        self.img_info_file  = yoop_config['paths']['Camera_Info_Folder'] 
+
+        # Write Storage Locations
+        self.img_name_format    = yoop_config['formats']['Image_Name_Format']    
+        self.img_extension      = yoop_config['formats']['Image_Extension']    
+        self.img_folder_format  = yoop_config['formats']['Image_Folder_Format']    
+        self.img_file_format    = yoop_config['formats']['Camera_Info_Format'] 
 
     @ZWOCamera.roi.getter
     def roi(self):

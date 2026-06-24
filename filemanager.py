@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import time
+from suntime import Sun
 import schedule
 import datetime
 import numpy as np
@@ -26,6 +27,8 @@ wkdir = os.getcwd()
 config_file_path = wkdir + "/.YooperConfig.toml"
 yoop_config = toml.load(config_file_path)
 
+# 
+
 # Write Storage Locations
 yoop_paths = yoop_config['paths']
 img_folder_path     = wkdir + yoop_paths['Camera_Images_Collection']    
@@ -36,6 +39,7 @@ google_folder_id = yoop_paths['GDrive_Folder_ID']               #? If using hdf5
 
 # Get formats for storage locations/files
 yoop_form = yoop_config['formats']
+data_folder = yoop_form['Data_Folder']
 img_folder_format = yoop_form['Image_Folder_Format']
 cam_info_format = yoop_form['Camera_Info_Format']
 sensor_data_format = yoop_form['Sensor_Data_Format']
@@ -48,6 +52,15 @@ def rclone(path='', folder=''):
     '''
     Given a folder (and path???) uploads the folder and its contents to 
     the set "remote" path in rclone.
+
+    Parameters
+    ----------
+    path : str
+        the location of the file or folder to be upload to remote
+
+    folder : str
+        the name of the folder to hold the uploaded data, if not present
+        at remote a new folder will be made.
     '''
     print(folder)
     
@@ -64,24 +77,36 @@ def rclone(path='', folder=''):
     print(f"string based command: {str_cmd}")
 
 
-# todo 
-def getDataLoc():
-    'Returns the data collection locations (file/directory)'
-    return
+def dataLoc(date, format=''):
     '''
-    Calculates the working file name based on UTC time.
-    If it is after 4pm UTC a new file name is created for the current day.
-    If it is before 4pm UTC the file is the prior day.
-    '''
-    global folder, hdf_file, cur_day
-    now = datetime.datetime.now(datetime.timezone.utc)
+    Returns the data collection locations (file/directory) when called.
 
-    folder = now.strftime('%y%B')
-    if now.hour >= 20:
-        hdf_file = now.strftime('%d_%m_%y.hdf5')
-    else:
-        cur_day = now - datetime.timedelta(1)
-        hdf_file = cur_day.strftime('%d_%m_%y.hdf5')
+    Parameters
+    ----------
+    date: datetime
+        Date of the new files using UTC.
+    format: str, strftime
+        Format for the file or directory, will use strftime to write.
+
+    Returns
+    -------
+    str : Path to working file/folder
+
+    '''
+    global data_folder_full
+    global current_data_folder
+    # Make new days data folder if doesn't exist
+    #! Add naming convention addition incase multiple folder per day [hour?]
+    current_data_folder = date.strftime(data_folder)
+    data_folder_full = f"{wkdir}/Data/{current_data_folder}"
+
+    if os.path.exists(data_folder_full) is False:
+        os.mkdir(data_folder_full)
+        os.mkdir(f"{data_folder_full}/{img_folder_format}")
+
+    if format != '': 
+        return time.strftime(f"{data_folder_full}/{format}")
+    return None
 
 
 # todo Integrate this into file creation
@@ -146,7 +171,7 @@ def updateJobs():  # Turn off the cam
     Used to turn the camera on/off dependant on the time of day.
     Currently on between 12pm and 7 pm if the function is called.
     '''
-
+    return None
     global cameraoff, camera_period
     # Cancel all jobs with the camera
     schedule.clear('camera')   
@@ -187,20 +212,25 @@ def updateJobs():  # Turn off the cam
         print(f"Error with collecting next sun event type")
 
 # delete files #? mark with flags for deletion?
-def deleteFiles():
+def deleteFiles(path):
     '''
     Deletes files after upload verification.
     '''
-    pass
+    return None
+    # option 1: methodically, seperately delete each file. Can look for flags or unique filetype
+    # os.remove to delete a file
+    # os.rmdir to delete an empty directory
+
+    # option 2: fast with shutil
+    # shutil.rmtree to delete a whole tree 
 
 
 # todo will hdf5 be used
 def createHDF5(file_name):
-    """Creates an HDF5 file and writes random data."""
-    with h5py.File(file_name, "w") as f:
-        data = np.random.rand(100, 100)
-        f.create_dataset("random_data", data=data)
-    print(f"{file_name} created successfully.")
+    '''
+    Creates an empty hdf5 files
+    '''
+    pass
 
 
 # todo will this function be valueable
@@ -209,8 +239,8 @@ def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google D
     Upload data to the google drive.
     '''
     creds = None
-    token_path = '/home/amland/SPRL_Observatory/Token_management/token_2.json'
-    creds_path = '/home/amland/SPRL_Observatory/Token_management/credentials.json'
+    token_path = '/home/USER/SPRL_Observatory/Token_management/token_2.json'
+    creds_path = '/home/USER/SPRL_Observatory/Token_management/credentials.json'
 
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
@@ -247,8 +277,36 @@ def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google D
         print(f"An error occurred: {error}")
 
 
+def uploadFiles():
+    '''
+    Uploads data files from the YooperNet station. Creates and/or updates 
+    working directories for data collection. Logs the procedure.
+
+    TODO
+        Upload all files
+        Update Directories
+        Write log
+
+    Parameters
+    ----------
+    '''
+    # Save extra variables before they are written
+    path_to_delete = data_folder_full
+    # 1st: Upload files
+    # rclone -> upload current working folder to remote with same name
+    rclone(path=data_folder_full,folder=current_data_folder)
+
+    # 2nd: Update working directory
+    #! Need to assign when file changes
+    dataLoc(date=filler)
+
+    # 3rd: Delete uploaded files
+    # ! implement once operable
+    # shutil(path_to_delete)
+
 # Run commands from strings
 def runStr(cmd: str):
+    'run a string command as though it is in the terminal'
     command = cmd.split(' ')
     subprocess.run(command, check=True)
 
