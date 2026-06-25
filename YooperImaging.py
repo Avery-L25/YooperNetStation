@@ -19,19 +19,6 @@ wkdir = os.getcwd()
 config_file_path = wkdir + "/.YooperConfig.toml"
 yoop_config = toml.load(config_file_path)
 
-# ### Write Storage Locations
-# img_folder_path = yoop_config['paths']['Camera_Images_Folder']    
-# img_info_path = yoop_config['paths']['Camera_Info_File'] 
-# sensor_file_path = yoop_config['paths']['Sensor_Data_File']
-# google_folder_id = yoop_config['paths']['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
-
-
-# ### initializes scheduling
-# schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
-# schedule.every().day.at("16:00").do(upload_data)  # upload hdf5 file at 4pm
-# schedule.every().day.at("08:00").do(cam_off)  # turn camera off after 8am
-# schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
-
 ### Define Camera functions
 def captureImage(expSec=30):
     '''
