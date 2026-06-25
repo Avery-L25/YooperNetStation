@@ -183,8 +183,9 @@ class YooperCam(ZWOCamera):
             Displays the full resolution image.        
         return_img : bool, defaults to False
             Returns image array.
-        imgName : str, defaults to "shot_%H_%M_%S.png" 
+        imgName : str, defaults to toml format 
             Name the saved image using the current time unless specified.
+            Default = "YYYY_MM_DD_exp{exposure in second}.png"
         exposure : float, defaults to 1
             Camera exposure in seconds, converted into microseconds for camera
             operation.

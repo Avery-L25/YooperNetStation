@@ -29,12 +29,12 @@ GDrive_Folder_ID=0
 Token_Path=0
 Credits_Path=0
 
-[formats]
-Data_Folder         ="%Y_%m_%d_Data"
-Image_Name_Format   ="%Y_%m_%d_exp"
+[formats]  
+Data_Folder         ="%Y-%m-%d_Data"
+Image_Name_Format   ="%Y-%m-%d_%H-%M-%S_exp"
+Image_Folder_Format ="%Y-%m-%d_Images"
+Camera_Info_Format  ="%Y-%m-%d_Cam_Info"
+Sensor_Data_Format  ="%Y-%m-%d_Sensor_Data"
 Image_Extension     =".png"
-Image_Folder_Format ="%Y_%m_%d_Images"
-Camera_Info_Format  ="%Y_%m_%d_Cam_Info"
-Sensor_Data_Format  ="%Y_%m_%d_Sensor_Data"
 
 [passkeys]

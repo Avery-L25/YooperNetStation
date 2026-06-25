@@ -22,12 +22,11 @@ from multiprocessing import Process
 wkdir = os.getcwd()
 config_file_path = wkdir + "/.YooperConfig.toml"
 yoop_config = toml.load(config_file_path)
-ycam = None
 
 # ### Write Storage Locations
-# img_folder_path = yoop_config['paths']['Camera_Images_Folder']    
+img_folder_path = wkdir + yoop_config['paths']['Camera_Images_Collection']    
 # img_info_path = yoop_config['paths']['Camera_Info_File'] 
-# sensor_file_path = yoop_config['paths']['Sensor_Data_File']
+sensor_file_path = wkdir + yoop_config['paths']['Sensor_Data_Folder']
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
 
 
@@ -79,6 +78,9 @@ def startCam():
                 print("="*35 + "\n")
                 sys.exit()
     
+    #! Temporary fixes!!!
+    YCamera.img_folder = img_folder_path
+
     # Return working camera
     return YCamera
 
@@ -131,7 +133,6 @@ def startStation():
     'Start data collection'
     ### Initialize Camera Object
     global ycam
-    print("Starting YooperNet Station")
     ycam = startCam()
 
     # Start sensor data collection
@@ -158,6 +159,12 @@ def startStation():
 # try:
 if __name__ == '__main__':
 
+    print("Starting YooperNet Station")
+    print("==========================")
+    print("\n"*3)
+
+    # start the station for operation
+    startStation()
 
     # run the program with period = 10 sec
     # schedule(timer, interval=2)
