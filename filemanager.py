@@ -39,7 +39,7 @@ google_folder_id = yoop_paths['GDrive_Folder_ID']               #? If using hdf5
 
 # Get formats for storage locations/files
 yoop_form = yoop_config['formats']
-data_folder = yoop_form['Data_Folder']
+data_folder_format = yoop_form['Data_Folder']
 img_folder_format = yoop_form['Image_Folder_Format']
 cam_info_format = yoop_form['Camera_Info_Format']
 sensor_data_format = yoop_form['Sensor_Data_Format']
@@ -97,12 +97,18 @@ def dataLoc(date, format=''):
     global current_data_folder
     # Make new days data folder if doesn't exist
     #! Add naming convention addition incase multiple folder per day [hour?]
-    current_data_folder = date.strftime(data_folder)
+    current_data_folder = date.strftime(data_folder_format)
     data_folder_full = f"{wkdir}/Data/{current_data_folder}"
 
     if os.path.exists(data_folder_full) is False:
         os.mkdir(data_folder_full)
         os.mkdir(f"{data_folder_full}/{img_folder_format}")
+        # start sensor csv
+        # start camera csv
+        #? open( {file}, 'a').clos()
+        #? Start new log?
+
+    
 
     if format != '': 
         return time.strftime(f"{data_folder_full}/{format}")

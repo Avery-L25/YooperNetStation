@@ -397,7 +397,7 @@ class YooperCam(ZWOCamera):
 
         # Pass Values as kwargs to respect config functions
         self.setROI(**roi)
-        # self.setControllables(**controls)
+        self.setControllables(**controls)
 
         # Write Storage Locations
         self.img_folder     = yoop_config['paths']['Camera_Images_Collection']    
