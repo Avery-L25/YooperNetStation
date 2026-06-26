@@ -10,6 +10,7 @@ import pyzwoasi as pza
 import os
 import sys
 import toml
+import csv
 import datetime
 import time
 import numpy as np
@@ -28,7 +29,7 @@ img_folder_path = wkdir + yoop_config['paths']['Camera_Images_Collection']
 # img_info_path = yoop_config['paths']['Camera_Info_File'] 
 sensor_file_path = wkdir + yoop_config['paths']['Sensor_Data_Folder']
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
-
+sensor_file = sensor_file_path + "testing.csv"
 
 # ### initializes scheduling
 # schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
@@ -111,10 +112,20 @@ def getSensorData():
     
 
     while True:
+        # Read data into dictionary
         mag, pres, temp, gps = _readSensors()
         sensor_dict = {'Mag X':mag[0],'Mag Y':mag[1],'Mag Z':mag[2],
                     'Pressure':pres,'Temperature':temp,'GPS':gps}
+        
+        # Write dictionary to file
+        with open(sensor_file, 'a', newline='') as cfile:
+            cwrite = csv.DictWriter(cfile,fieldnames=sensor_dict.keys())
+            cwrite.writerow(sensor_dict)
+        
+        # print #! should log
         print(sensor_dict)
+
+        # Set data reading rate
         time.sleep(5)
 
 def _readSensors():
