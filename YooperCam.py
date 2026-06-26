@@ -12,11 +12,14 @@ import toml
 from time import sleep, time
 from datetime import datetime as dt
 import shutil
+import logging
 
 # import supporting libraries
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
+
+# Setup logger
 
 
 class YooperCam(ZWOCamera):
@@ -326,9 +329,13 @@ class YooperCam(ZWOCamera):
             self.pre = self.img
             self.img = img
         else:
+            #! MAke this go away!! img need 
             pre_updated = False
             img = self.img
         
+        #* if self.pre is None:
+            # return False
+        self.pre = self.img
         pre = self.pre
 
         ### get rgb components as floats
@@ -390,7 +397,7 @@ class YooperCam(ZWOCamera):
 
         # Pass Values as kwargs to respect config functions
         self.setROI(**roi)
-        self.setControllables(**controls)
+        # self.setControllables(**controls)
 
         # Write Storage Locations
         self.img_folder     = yoop_config['paths']['Camera_Images_Collection']    
@@ -505,8 +512,12 @@ class YooperCam(ZWOCamera):
     @property
     def controllables(self):
         'print control information to terminal'
+        
         for c,v in self._dictControlVals.items():
-            print(f"{c:<25} {"|":<3} {v:<3}")
+            min = self._dictControlMin[c]
+            max = self._dictControlMax[c]
+
+            print(f"{c:<25} {"|":<3} {v:<10} | {min}  -  {max}")
         return None
 
     def setControllables(self, Gain=None, Exposure=None, WB_R=None, WB_B=None,
@@ -529,8 +540,9 @@ class YooperCam(ZWOCamera):
                 # If one arg is passed assign into list before config
                 if str(val).lower() == "auto":
                     # If a controllable is set to auto, keep the assigned value 
-                    # and update the auto portion to true [1]  
-                    val = [getattr(self,key)[0], 1]
+                    # and update the auto portion to true [1]
+                    
+                    val = [pza.getControlValue(self._cameraID, self._dictControlID[key])[0], 1]
                 else:
                     # If the controllable is not auto, use assigned value and 
                     # set auto to false [0]
@@ -592,7 +604,7 @@ class YooperCam(ZWOCamera):
                 value = "Auto"
             else:
                 value = val
-            print(f"{con_name} was set to {value}")
+            logging.debug(f"{con_name} was set to {value}")
 
     def liveView(self, dim=480):
         """
@@ -629,6 +641,7 @@ class YooperCam(ZWOCamera):
         previousTime = time()
         self.configFromToml()
         self.startVideoCapture()
+        error_counter = 0
         while True:
             if state is True:  
                 # Updating camera exposure
@@ -648,12 +661,15 @@ class YooperCam(ZWOCamera):
                     # be at least twice the exposure time plus 500 microseconds
                     refreshRate = int(2 * exposureTime_us + 500)
                     frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
+                    img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
                 except pza.ASIError as e:
                     print(f"Error getting video data: {e}")
+                    img = np.zeros((self.width, self.width, 3))
+                    error_counter = error_counter+1
+                    print(error_counter)
                     continue
                     
-                img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
-
+                 
                 # Resize image for display
                 # target_height = 480
                 # scale = target_height / img.shape[0]
@@ -676,7 +692,7 @@ class YooperCam(ZWOCamera):
 
             # Let's close the window if 'q' is pressed
             key_press = cv.waitKey(1) & 0xFF
-            if key_press == ord('q'): break  # q for quit
+            if key_press == ord('q') or error_counter == 10: break  # q for quit
             if key_press == ord(' '): state = not state  # [space] for pause
 
 

@@ -2,16 +2,16 @@
 AutoExpMaxExpMS = 3000000                   
 AutoExpMaxGain = 225                        
 AutoExpTargetBrightness = 100               
-BandWidth = "auto"                          
+BandWidth = 40                              #Default: 40 # 0- 100 
 Exposure = 30000000  # in micro-seconds    # Default: 1000000 (1 second)
-Flip = 0                                    # Default: 0
+Flip = 0                                   # Default: 0
 Gain = 100                                  # Default: 100
 HardwareBin = 0                             # Default: 0
 HighSpeedMode = 0                       
 MonoBin = 0                                 
-Offset = 5                                  
+Offset = 95                                 # Default: 80 True Max is 100
 WB_B = 95  # DO NOT CHANGE WHITE BALANCE    # Default: 95
-WB_R = 70                                   # Default: 70
+WB_R = 52                                   # Default: 52
 
 [roi]                                       # Default is centered for a 20 MP 1" Sensor with a 2/3" Lens
 start_x = 1374                              # Default: 1374
@@ -25,9 +25,9 @@ imageType = "RGB24"                         # Default: "RGB24"
 Camera_Images_Collection="/Data/camera_images/" 
 Camera_Info_Folder="/Data/image_info_files/"
 Sensor_Data_Folder="/Data/sensor_files/"
-GDrive_Folder_ID=0
-Token_Path=0
-Credits_Path=0
+# GDrive_Folder_ID=0
+# Token_Path=0
+# Credits_Path=0
 
 [formats]  
 Data_Folder         ="%Y-%m-%d_Data"
