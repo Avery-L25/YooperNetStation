@@ -22,9 +22,9 @@ binning = 1                                 # Default: 1
 imageType = "RGB24"                         # Default: "RGB24"
 
 [paths]
-Camera_Images_Collection="/Data/camera_images/" 
-Camera_Info_Folder="/Data/image_info_files/"
-Sensor_Data_Folder="/Data/sensor_files/"
+Camera_Images_Collection="/home/yoopernet/YooperNetStation/Data/camera_images/" 
+Camera_Info_Folder="/home/yoopernet/YooperNetStation/Data/image_info_files/"
+Sensor_Data_Folder="/home/yoopernet/YooperNetStation/Data/sensor_files/"
 # GDrive_Folder_ID=0
 # Token_Path=0
 # Credits_Path=0
@@ -38,6 +38,3 @@ Sensor_Data_Format  ="%Y-%m-%d_Sensor_Data"
 Image_Extension     =".png"
 
 [passkeys]
-
-
-[install]

@@ -199,16 +199,19 @@ trial.py
 system.py
 
 *.pyc
-SPRL_Observatory/Sensors/__pycache__/
-SPRL_Observatory/Sensors/camera/__pycache__
-SPRL_Observatory/Data_processing/__pycache__
-SPRL_Observatory/Data_processing/transmission/__pycache__
-Extra_Unused
+# Sensors/__pycache__/
+# Sensors/camera/__pycache__
+# Data_processing/__pycache__
+# Data_processing/transmission/__pycache__
+*__pycache__
 
 # A complete testing folder
-SPRL_Observatory/Data_processing/transmission
-SPRL_Observatory/Data_processing/transmission
-
+Data_processing/transmission
+Data_processing/transmission
+References/
+camera/
+Token_management/
+.YooperConfig.toml
 
 # types of files
 *.rules
@@ -219,12 +222,10 @@ SPRL_Observatory/Data_processing/transmission
 *.jpg
 *.webp
 *.png
+*.mp4
 *.h5py
 *.json
 *.h5py
 *.h5
 *.json
 *.env
-References/
-camera/
-Token_management/

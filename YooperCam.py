@@ -20,7 +20,7 @@ from pathlib import Path
 import sys
 
 # Setup logger
-
+log = logging.getLogger("YooperCamera")
 
 class YooperCam(ZWOCamera):
     '''
@@ -309,8 +309,6 @@ class YooperCam(ZWOCamera):
         return None
 
     def isAurora(self,img=None):
-        # Credit:
-        # https://github.com/joncooper65/raspberry-aurora/blob/master/detect.py
         '''
         Check most images against previous for bright, green/blue areas and
         returns a flag (bool) if detected.
@@ -324,19 +322,18 @@ class YooperCam(ZWOCamera):
         TODO: Fix pre-image assignment. We want to be able 
         '''
         # Ensure there is an image to work with
-        if img is not None:
-            pre_updated = True
-            self.pre = self.img
-            self.img = img
-        else:
-            #! MAke this go away!! img need 
-            pre_updated = False
-            img = self.img
+        if img is None:
+            log.warning("Image not provided, cannot check for aurora")
         
-        #* if self.pre is None:
-            # return False
+        # If there is no previous image, set current image as previous
+        if self.pre is None:
+            self.pre = img
+            return 
+
+
         self.pre = self.img
         pre = self.pre
+        self.img = img
 
         ### get rgb components as floats
         b, g, r = cv.split(img)
@@ -344,42 +341,67 @@ class YooperCam(ZWOCamera):
         g1 = g * 1.0
         b1 = b * 1.0
 
-        ### Create masks from current image
-        # Blue/Green ratio
-        gbratio = cv.divide(b1, g1)  #? blue / green
-        maskgbratio = cv.inRange(gbratio, 0.9, 1.3)  #? any cell with a b/g ratio between 0.9 and 1.3 is set to 255 
-
-        # Red/Green ratio
-        grratio = cv.divide(r1, g1)  #! red / green
-        maskgrratio = cv.inRange(grratio, 0.9, 1.3)  #! any cell with a r/g ratio between 0.9 and 1.3 is set to 255
-
-        # Masks for dominant green
-        mask1 = cv.compare(0.95*g, 1.0*b, cv.CMP_GT)  #? If 95% of green is greater that 100% of blue set 1 otherwise 0
-        mask2 = cv.compare(0.95*g, 1.0*r, cv.CMP_GT)  #! If 95% of green is greater that 100% of red set 1 otherwise 0
-        maskgreendominant = cv.bitwise_and(mask1, mask2)  #* This sets each pixel to the minimum of the two masks. (0 anywhere green was is more present that red OR blue)
-
-        # Create strong green mask
-        neutralMask = cv.bitwise_and(maskgrratio, maskgbratio)  # mask for area that have similar values of rgb
-        inverseNeutral = cv.bitwise_not(neutralMask)  # Mask for areas that do not have similar rgb values
-        verygreen = cv.bitwise_and(maskgreendominant, inverseNeutral)  #* This shows only the areas where green is dominant over blue or red AND rgb is not similar
-
-        # Apply masks and get images
-        masked_img = cv.bitwise_and(img, img, mask=verygreen)  # Display the image only whre the verygreen mask values are
-        masked_pre = cv.bitwise_and(pre, pre, mask=verygreen)
-
-        # Update contained images
-        self.masked = masked_img
-        self.premask = masked_pre
-        if pre_updated is False:
-            self.pre = self.img
+        b_p, g_p, r_p = cv.split(img)
+        r1_p = r_p * 1.0
+        g1_p = g_p * 1.0
+        b1_p = b_p * 1.0
         
-        # Use mse to determine the changes in time
-        mask_img_diff = masked_img - masked_pre
-        norm_of_diff = np.linalg.norm(mask_img_diff)  # Returns the normal vector
-        mse = float(np.mean(mask_img_diff**2))  # Use a threshold instead?
 
-        self._auroraFlag = bool(norm_of_diff)  # currently any difference in the 'very green' region will be marked as a potential aurora
-        return bool(mse)
+        def maskCheck():
+            # Credit:
+            # https://github.com/joncooper65/raspberry-aurora/blob/master/detect.py
+            ### Create masks from current image
+            # Blue/Green ratio
+            gbratio = cv.divide(b1, g1)  #? blue / green
+            maskgbratio = cv.inRange(gbratio, 0.9, 1.3)  #? any cell with a b/g ratio between 0.9 and 1.3 is set to 255 
+
+            # Red/Green ratio
+            grratio = cv.divide(r1, g1)  #! red / green
+            maskgrratio = cv.inRange(grratio, 0.9, 1.3)  #! any cell with a r/g ratio between 0.9 and 1.3 is set to 255
+
+            # Masks for dominant green
+            mask1 = cv.compare(0.95*g, 1.0*b, cv.CMP_GT)  #? If 95% of green is greater that 100% of blue set 1 otherwise 0
+            mask2 = cv.compare(0.95*g, 1.0*r, cv.CMP_GT)  #! If 95% of green is greater that 100% of red set 1 otherwise 0
+            maskgreendominant = cv.bitwise_and(mask1, mask2)  #* This sets each pixel to the minimum of the two masks. (0 anywhere green was is more present that red OR blue)
+
+            # Create strong green mask
+            neutralMask = cv.bitwise_and(maskgrratio, maskgbratio)  # mask for area that have similar values of rgb
+            inverseNeutral = cv.bitwise_not(neutralMask)  # Mask for areas that do not have similar rgb values
+            verygreen = cv.bitwise_and(maskgreendominant, inverseNeutral)  #* This shows only the areas where green is dominant over blue or red AND rgb is not similar
+
+            # Apply masks and get images
+            masked_img = cv.bitwise_and(img, img, mask=verygreen)  # Display the image only whre the verygreen mask values are
+            masked_pre = cv.bitwise_and(pre, pre, mask=verygreen)
+
+            # Update contained images
+            self.masked = masked_img
+            self.premask = masked_pre
+            if pre_updated is False:
+                self.pre = self.img
+            
+            # Use mse to determine the changes in time
+            mask_img_diff = masked_img - masked_pre
+            norm_of_diff = np.linalg.norm(mask_img_diff)  # Returns the normal vector
+            mse = float(np.mean(mask_img_diff**2))  # Use a threshold instead?
+            return norm_of_diff, mse
+
+        def netColorCheck():
+            '''
+            Check total change in color between current and previous image
+            '''
+            dr = (r - r_p).sum()
+            dg = (g - g_p).sum()
+            db = (b - b_p).sum()
+
+            # Check mathematically
+            
+            pass
+
+
+
+        mask_norm, mask_mse = maskCheck()
+        self._auroraFlag = bool(mask_norm)  # currently any difference in the 'very green' region will be marked as a potential aurora
+        return bool(mask_mse)
 
     def configFromToml(self):
         '''
@@ -591,10 +613,17 @@ class YooperCam(ZWOCamera):
             # Set controllable value to camera
             try:
                 pza.setControlValue(self._cameraID, con, val, auto)  # update setting
-            except pza.ASIError as e_msg:
+            except pza.ASIError as zwo_error:
+            # Grab error code
+                error_code = zwo_error.args[1]
                 # handle controls that cannot be set to camera directlly
-                print(f"Unable to set controllable {con_name.upper()} directly.\n"
-                      f"{e_msg}\nValue is assigned to YooperCam as attribute.")
+                if error_code == 16:
+                    log.info(f"Unable to set controllable {con_name.upper()} "
+                          f"directly, Error Code: {error_code}\nValue is "
+                          f"assigned to YooperCam as attribute.")
+                else:
+                    log.warning(f"Unable to set controllable {con_name.upper()}."
+                          f"{zwo_error}")
 
             self._dictControlVals[con_name] = val  # update value in dictionary
             setattr(self, con_name, val) # update attribute value
@@ -607,10 +636,11 @@ class YooperCam(ZWOCamera):
             logging.debug(f"{con_name} was set to {value}")
 
     def liveView(self, dim=480):
-        """
+        '''
         Live view with OpenCV interface. Press 'q' key to quit and space to pause.
         Allows live changing of gain and exposure while flagging for aurora.
-        """
+        '''
+        ### SETUP ###
         # Main frame
         windowName = "Live Camera Capture"
         cv.namedWindow(windowName)
@@ -674,7 +704,6 @@ class YooperCam(ZWOCamera):
                 # target_height = 480
                 # scale = target_height / img.shape[0]
                 # target_width = int(img.shape[1] * scale)
-                small = cv.resize(img, (disp_size, disp_size))
 
                 # run aurora detection and display
                 aur_img = cv.resize(img, (aur_size, aur_size))
@@ -699,27 +728,48 @@ class YooperCam(ZWOCamera):
         self.stopVideoCapture()
         cv.destroyAllWindows()
 
-    def liveTestView(self):
-        """
+    def liveTestView(self, disp_size=480):
+        '''
         Live view with visuals on all testing parameters.
         Built in operations to help with analysis.
 
         Press 'q' to quit.
         Press ' ' (space) to pause data acquisition.
         Precc 'c' to capture a single image.
-        """
+        '''
+        # Get configuration
+        # - Configure all settings with trackbars
+        config_all_controls = False
+        if config_all_controls is False:
+            controller_list = ['Gain', 'Exposure']
+        else:
+            controller_list = ['Gain', 'Exposure', 'WB_R', 'WB_B', 'Offset', 
+                               'BandWidth', 'Flip', 'AutoExpMaxGain', 
+                               'AutoExpMaxExpMS', 'AutoExpTargetBrightness', 
+                               'HardwareBin', 'HighSpeedMode', 'MonoBin', 
+                               'Temperature']
+        # - Multiview
+        four_windows = True
+        # - Different setting
+        # - Aurora Testing
+        # - FPS
+        display_fps = False
+
+        #region SETUP
         # Main frame
         windowName = "Live Camera Capture"
         cv.namedWindow(windowName)
         cv.createTrackbar("Exposure" , windowName, 50  , 100, lambda x: None)
         cv.createTrackbar("Gain"     , windowName, 100  , 100, lambda x: None)
+        if config_all_controls is True:
+            # initialize trackbars for more controls
+            pass
 
         # 1 second maximum instead
         maximumExposureLimit = np.minimum(self.exposureLimits[1], 1000)
 
         # Software binning does not change latence or FPS in live view
         self.softwareBinning = 1
-
         if "HardwareBin" in self._dictControlID:
             # Hardware binning, if available, may accelerate FPS
             self.hardwareBinning = self.hardwareBinningLimits[1]
@@ -731,127 +781,134 @@ class YooperCam(ZWOCamera):
         aur_size = 1200
         self._resetAuroraImages(aur_size)
         aur_disp = np.zeros([800,800,3])
-        disp_size = 800
-        ds = disp_size
-        border_width = 40 
-        pos1 = (border_width, border_width)
-        pos2 = (2*border_width+disp_size, border_width)
-        pos3 = (border_width, 2*border_width+disp_size)
-        pos4 = (2*border_width+disp_size, 2*border_width+disp_size)
-        canvas_size = 2*disp_size + 3*border_width
         
+        if four_windows is True:
+            # Get 
+            disp_size = 800
+            border_width = 40 
+            pos1 = (border_width, border_width)
+            pos2 = (2*border_width+disp_size, border_width)
+            pos3 = (border_width, 2*border_width+disp_size)
+            pos4 = (2*border_width+disp_size, 2*border_width+disp_size)
+            canvas_size = 2*disp_size + 3*border_width
+            disp_image = np.full((canvas_size, canvas_size,3),100, dtype=np.uint8)
+        else:
+            disp_image = np.zeros((disp_size, disp_size, 3))
+            pass
+
         # Initialize parameters
-        small = np.full((canvas_size, canvas_size,3),100, dtype=np.uint8)
+        ds = disp_size
         state = True
         single_shot = False
         previousTime = time()
         self.configFromToml()
         self.startVideoCapture()
+        error_counter = 0
+        #endregion
+
+        #region Video Funcs
+        def captureVideoData():
+            'Attempt to get data camera buffer'
+            # Getting image from camera
+            try:
+                # As given by the manufacturer ZWO, the refresh rate should
+                # be at least twice the exposure time plus 500 microseconds
+                exposureTime_us = int(self.exposure)
+                refreshRate = int(2 * exposureTime_us + 500)
+                frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
+                img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
+                return img
+            except pza.ASIError as zwo_error:
+                error_code = zwo_error.args[1]
+                if error_code == 11:
+                    
+                    log.info(f"Error getting video data: {error_code}")
+                else:
+                    log.warning(f"Error getting video data: {error_code}")
+                    log.warning(zwo_error)
+        
+        def writeDisplayImage(img, disp_image):
+            '''
+            Make the display image. Write any text over image(s).
+            Will put activate the multiwindow view.'''
+            global previousTime
+            aur_img = cv.resize(img, (aur_size, aur_size))
+            aur_txt = self.auroraDetection(aur_img)
+            
+            aur_disp = cv.resize(img, (disp_size, disp_size))
+            if four_windows is True:
+                rs_img = cv.resize(aur_disp, (disp_size,disp_size))
+                rs_pre = cv.resize(self.pre, (disp_size,disp_size))
+
+                rs_preMask = cv.resize(self.premask, (disp_size,disp_size))
+                rs_Mask = cv.resize(self.masked, (disp_size,disp_size))
+                
+                # Write Image Names
+                disp_image[pos1[0]:pos1[0]+ds,pos1[1]:pos1[1]+ds] = rs_img
+                cv.putText(disp_image, f"Current Image", (pos1), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+                disp_image[pos3[0]:pos3[0]+ds,pos3[1]:pos3[1]+ds] = rs_pre
+                cv.putText(disp_image, f"Previous Image", (pos2), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                
+                disp_image[pos2[0]:pos2[0]+ds,pos2[1]:pos2[1]+ds] = rs_Mask
+                cv.putText(disp_image, f"Current Mask", (pos3), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+                
+                disp_image[pos4[0]:pos4[0]+ds,pos4[1]:pos4[1]+ds] = rs_preMask
+                cv.putText(disp_image, f"Previous Mask", (pos4), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+            # Write text to image
+            if display_fps is True:
+                # Computing and displaying FPS
+                currentTime = time()
+                fps = 1 / (currentTime - previousTime)
+                previousTime = currentTime
+                cv.putText(disp_image, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            log.info(f"Status: {aur_txt}")
+            cv.putText(disp_image, f"{aur_txt}", (int(disp_size*0.75), disp_size), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
+
+        def updateLiveControls(controller_list, windowName):
+            log.debug(f"Live controlls updated using list of length {len(controller_list)} ")
+            for con in controller_list:
+                conbar = cv.getTrackbarPos(con, windowName)
+                conmin = self._dictControlMin[con]
+                conmax = self._dictControlMax[con]
+
+                if con == "Exposure":
+                    # Updating camera exposure
+                    exposureTime_us = (self.exposureLimits[0] + 
+                                    (maximumExposureLimit - self.exposureLimits[0])
+                                        * conbar / 100)
+                    self.exposure = int(exposureTime_us)
+                elif con == "Gain":
+                    # Updating camera gain
+                    cameraGainMin, cameraGainMax = self._dictControlMin["Gain"], self._dictControlMax["Gain"]
+                    gain = int(cameraGainMin + (cameraGainMax - cameraGainMin) * conbar / 100)
+                    self.gain = gain    
+                else:
+                    value_of_control = int(conmin + (conmax -conmin) * conbar /100)
+                    setattr(self, con, value_of_control)
+                    self._setControllableValue(con,val=value_of_control)
+                    log.debug(f"Control {con} set to a value of {value_of_control}")
+        
+        def saveCurrentImage(image2save):
+            pass
+   
+        #endregion
+
+        # Start video loop
         while True:
             if state is True:  
-                # Updating camera exposure
-                exposureTime_percentage = cv.getTrackbarPos("Exposure", windowName)
-                exposureTime_us = (self.exposureLimits[0] + (maximumExposureLimit - self.exposureLimits[0]) * exposureTime_percentage / 100)
-                self.exposure = int(exposureTime_us)
+                updateLiveControls(controller_list=controller_list, windowName=windowName)
+                
+                img = captureVideoData()
 
-                # Updating camera gain
-                gain_percentage = cv.getTrackbarPos("Gain", windowName)
-                cameraGainMin, cameraGainMax = self._dictControlMin["Gain"], self._dictControlMax["Gain"]
-                gain = int(cameraGainMin + (cameraGainMax - cameraGainMin) * gain_percentage / 100)
-                self.gain = gain
+                writeDisplayImage(img, disp_image)
 
-                # Getting image from camera
-                try:
-                    # As given by the manufacturer ZWO, the refresh rate should
-                    # be at least twice the exposure time plus 500 microseconds
-                    refreshRate = int(2 * exposureTime_us + 500)
-                    frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
-                except pza.ASIError as e:
-                    print(f"Error getting video data: {e}")
-                    continue
+                if single_shot is True:
                     
-                img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
+                    state = False
 
-                # Resize image for display
-
-                # run aurora detection and display
-                
-                
-                aur_img = cv.resize(img, (aur_size, aur_size))
-                # self.img = aur_img
-                aur_txt = self.auroraDetection(aur_img)
-                pre_disp = aur_disp
-                aur_disp = cv.resize(img, (disp_size, disp_size))
-                # Computing and displaying FPS
-                rs_img = cv.resize(aur_disp, (disp_size,disp_size))
-                rs_pre = cv.resize(pre_disp, (disp_size,disp_size))
-                rs_preMask = cv.resize(self.premask, (disp_size,disp_size))
-                rs_Mask = cv.resize(self.masked, (disp_size,disp_size))
-                
-                small[pos1[0]:pos1[0]+ds,pos1[1]:pos1[1]+ds] = rs_img
-                cv.putText(small, f"Current Image", (pos1), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-
-                small[pos3[0]:pos3[0]+ds,pos3[1]:pos3[1]+ds] = rs_pre
-                cv.putText(small, f"Previous Image", (pos2), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-                
-                small[pos2[0]:pos2[0]+ds,pos2[1]:pos2[1]+ds] = rs_Mask
-                cv.putText(small, f"Current Mask", (pos3), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-                
-                small[pos4[0]:pos4[0]+ds,pos4[1]:pos4[1]+ds] = rs_preMask
-                cv.putText(small, f"Previous Mask", (pos4), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-
-                # currentTime = time()
-                # fps = 1 / (currentTime - previousTime)
-                # previousTime = currentTime
-                cv.putText(small, f"{aur_txt}", (int(disp_size*0.75), disp_size), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-                # cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-
-            if single_shot is True:
-                # Getting image from camera
-                try:
-                    # As given by the manufacturer ZWO, the refresh rate should
-                    # be at least twice the exposure time plus 500 microseconds
-                    refreshRate = int(2 * exposureTime_us + 500)
-                    frame = pza.getVideoData(self._cameraIndex, self.bufferSize, refreshRate)
-                except pza.ASIError as e:
-                    print(f"Error getting video data: {e}")
-                    continue
-                    
-                img = np.frombuffer(frame, dtype=np.uint8).reshape(self.height, self.width, self.bytesPerPixel)
-
-                aur_img = cv.resize(img, (aur_size, aur_size))
-                # self.img = aur_img
-                aur_txt = self.auroraDetection(aur_img)
-                pre_disp = aur_disp
-                aur_disp = cv.resize(img, (disp_size, disp_size))
-                # Computing and displaying FPS
-                rs_img = cv.resize(aur_disp, (disp_size,disp_size))
-                rs_pre = cv.resize(pre_disp, (disp_size,disp_size))
-                rs_preMask = cv.resize(self.premask, (disp_size,disp_size))
-                rs_Mask = cv.resize(self.masked, (disp_size,disp_size))
-                
-                small[pos1[0]:pos1[0]+ds,pos1[1]:pos1[1]+ds] = rs_img
-                cv.putText(small, f"Current Image", (pos1), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-
-                small[pos3[0]:pos3[0]+ds,pos3[1]:pos3[1]+ds] = rs_pre
-                cv.putText(small, f"Previous Image", (pos2), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-                
-                small[pos2[0]:pos2[0]+ds,pos2[1]:pos2[1]+ds] = rs_Mask
-                cv.putText(small, f"Current Mask", (pos3), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-                
-                small[pos4[0]:pos4[0]+ds,pos4[1]:pos4[1]+ds] = rs_preMask
-                cv.putText(small, f"Previous Mask", (pos4), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-
-                # currentTime = time()
-                # fps = 1 / (currentTime - previousTime)
-                # previousTime = currentTime
-                cv.putText(small, f"{aur_txt}", (int(disp_size*0.75), disp_size), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-                # cv.putText(small, f"FPS: {fps:.2f}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                 
-                single_shot = False
-
-            cv.imshow(windowName, small)
+            cv.imshow(windowName, disp_image)
 
             # Let's close the window if 'q' is pressed
             key_press = cv.waitKey(1) & 0xFF
