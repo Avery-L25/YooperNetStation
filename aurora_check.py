@@ -10,11 +10,26 @@ from datetime import datetime as dt
 import shutil
 import logging
 
+
+import matplotlib.pyplot as plt; plt.ion()
+import pandas as pd
+
+
 logging.basicConfig()
-log = logging.getLogger("auraCheck")
 DEBUG2 = 11
+DATA = 28
 logging.addLevelName(DEBUG2,"DEBUG2")
-log.setLevel(level=15)
+logging.addLevelName(DATA,"DATA")
+
+log = logging.getLogger("auraCheck")
+log.setLevel(level=30)
+
+data_log = logging.getLogger("writeData")
+data_1 = logging.FileHandler("data.log")
+data_formatter = logging.Formatter('%(asctime)s - %(message)s')
+data_1.setFormatter(data_formatter)
+data_log.addHandler(data_1)
+def data(msg): data_log.log(DATA, msg)
 
 class auraCheck():
     def __init__(self) -> None:
@@ -22,6 +37,10 @@ class auraCheck():
         self.pre = None
         self.masked = None
         self.premask = None
+        self.file = None # dt.now().strftime("Data/test_files/check_data_%Y-%m-%d_%H-%M-%S.csv")
+        self.auraDict = {}
+        self._fileHasHeader = False
+        
         pass
 
     def auroraDetection(self,*args,**kwargs) -> str:
@@ -88,12 +107,17 @@ class auraCheck():
                   f"self.pre = {self.pre.shape}\n"
                   f"self.img = {self.img}")
         ### get rgb components as floats
+
         b, g, r = cv.split(img)
         r1 = r * 1.0
         g1 = g * 1.0
         b1 = b * 1.0
 
-        b_p, g_p, r_p = cv.split(img)
+        self.auraDict['Blue']   = b.sum()/b.size
+        self.auraDict['Green']  = g.sum()/b.size
+        self.auraDict['Red']    = r.sum()/b.size
+
+        b_p, g_p, r_p = cv.split(pre)
         r1_p = r_p * 1.0
         g1_p = g_p * 1.0
         b1_p = b_p * 1.0
@@ -102,6 +126,7 @@ class auraCheck():
         def maskCheck():
             # Credit:
             # https://github.com/joncooper65/raspberry-aurora/blob/master/detect.py
+            global dicty
             ### Create masks from current image
             log.log(DEBUG2,"maskedCheck in Progress")
             # Blue/Green ratio
@@ -134,30 +159,71 @@ class auraCheck():
             mask_img_diff = masked_img - masked_pre
             norm_of_diff = np.linalg.norm(mask_img_diff)  # Returns the normal vector
             mse = float(np.mean(mask_img_diff**2))  # Use a threshold instead?
+            self.auraDict['mask_mse'] = mse
+            self.auraDict['mask_norm'] = norm_of_diff
             return norm_of_diff, mse
 
         def netColorCheck():
             '''
             Check total change in color between current and previous image
             '''
-            dr = (r - r_p).sum()
-            dg = (g - g_p).sum()
-            db = (b - b_p).sum()
-
-            # Check mathematically
+            dr = (r - r_p).sum() / r.size
+            log.info(f"r ({r.sum()}) - r_p({r_p.sum()}) = dr ({dr})")
+            dg = (g - g_p).sum() / g.size
+            db = (b - b_p).sum() / b.size
             
-            pass
+            # Check mathematically
+            r2b = dr/db
+            g2b = dg/db
+            color_sums = [dr, dg, db]
+            self.auraDict['dRed'] = dr
+            self.auraDict['dGreen'] = dg
+            self.auraDict['dBlue'] = db
+            self.auraDict['red2blue'] = r2b
+            self.auraDict['green2blue'] = g2b
+            self.auraDict['green2red'] = dg/dr
+
+            return color_sums
 
 
 
         mask_norm, mask_mse = maskCheck()
+        color_sums = netColorCheck()
+                 
         log.info(f"mask_norm = {mask_norm} and mask_mse = {mask_mse}")
         self._auroraFlag = bool(mask_norm)  # currently any difference in the 'very green' region will be marked as a potential aurora
-        return (mask_mse, mask_norm)
+
+        if self._fileHasHeader is False: self.startCSV(self.auraDict)
+        self.write2CSV(self.auraDict)
+        return (mask_mse, mask_norm, color_sums)
+
+    def write2CSV(self, dicty):
+        with open(self.file, 'a', newline='') as cfile:
+            cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
+            cwrite.writerow(dicty)
+
+    def startCSV(self,dicty):
+        if self._fileHasHeader is False:
+            try:
+                with open(self.file, 'rb') as cfile:
+                    sniffer = csv.Sniffer()
+                    self._fileHasHeader = sniffer.has_header(cfile.read(2048))
+            except FileNotFoundError:
+                log.debug(f"File was not found. {self.file}")
+                self._fileHasHeader = False
+            with open(self.file, 'a', newline='') as cfile:
+                if self._fileHasHeader is False:
+                    cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
+                    cwrite.writeheader()
+                    self._fileHasHeader = True
+        else:
+            pass
+
 
     def fromVideo(self, video_file):
         
         cap = cv.VideoCapture(video_file)
+        self.file = dt.now().strftime(f"Data/test_files/{(video_file.split('/')[-1]).split('.')[0]}_%d_%H-%M.csv")
         state = True
         while cap.isOpened():
             if state:
@@ -175,28 +241,30 @@ class auraCheck():
             
                 if checked:
                     log.log(DEBUG2,f"checked is {checked}")
-                    mask_mse, mask_norm = checked[:]
+                    mask_mse, mask_norm, color_sum = checked[:]
+                    dr, dg, db = color_sum[:]
                     aur_txt = (f"MSE from masking: {round(mask_mse,4)} \nNorm from masking"
-                            f": {round(mask_norm,4)}")
+                            f": {round(mask_norm,2)}\nRed:{round(dr,3)}\nGreen:{round(dg,3)}\nBlue:{round(db,3)}")
                 else:
                     aur_txt = "No previous image, wait until next image"
                 
                 txt_offset = cv.getTextSize(aur_txt,cv.FONT_HERSHEY_SIMPLEX,0.5,2)
                 aur_txt = aur_txt.split('\n')
                 x=0
+                disp_frame = frame
                 for i in (aur_txt):
-                    cv.putText(img=frame, text=f"{i}", org=(10, int(frame.shape[1]-30+x*1.25*txt_offset[0][1])),
+                    cv.putText(img=disp_frame, text=f"{i}", org=(10, int(disp_frame.shape[1]-15-x*1.25*txt_offset[0][1])),
                     fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
                     x=x+1
 
 
 
-                gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-                cv.imshow('frame', frame)
+                gray = cv.cvtColor(disp_frame, cv.COLOR_BGR2GRAY)
+                cv.imshow('frame', disp_frame)
 
-            key_press = cv.waitKey(25) & 0xFF
+            key_press = cv.waitKey(1) & 0xFF
             if key_press == ord('q'):
-                log.info(f"Frame shape: {frame.shape}")
+                log.info(f"Frame shape: {disp_frame.shape}")
 
                 break
             elif key_press == ord(' '): 
@@ -273,8 +341,128 @@ class auraCheck():
             elif sOg == 'next':
                 continue
 
+    def plotCSV(self, file='', avg_color=False):
+        'Plot aurora checking data from csv file'
+        # Get latest file if none provided
+        if file == '':
+            try:
+                path_true = os.path.exists(self.file)
+            except TypeError:
+                path_true = False
+            if path_true:
+                file=self.file
+            else:
+                files_to_choose = os.listdir("Data/test_files")
+                files_to_choose.sort()
+                for f in files_to_choose:
+                    if f.find(".csv") == -1:
+                        files_to_choose.remove(f)
+                file = files_to_choose[-1]
+                file = f"Data/test_files/{file}"
+        
+        # Read data
+        df = pd.read_csv(file,header=0)
+        # Get figure
+        fig, ax = plt.subplots(3,2, sharex=True,sharey=False)
+        r2g = df['dRed']/df['dGreen']
+        ax0 = [ax[0,0].twinx(),ax[0,1].twinx()]
+        ax2 = [ax[2,0].twinx(),ax[2,1].twinx()]
+        average_color_diff = (df['dBlue'] + df['dGreen'] + df['dRed'] )/3
+
+        # initialize constants
+        x = range(0,df.shape[0])
+        colors = {'mask_mse':'gray',
+                  'mask_norm':'darkviolet',
+                  'dRed':'red',
+                  'dGreen':'green',
+                  'dBlue':'blue',
+                  'green2red':'navy'}
+        xcx = ("color=colors[\'mask_mse\'], linewidth=1.0")
+
+        # Edit figure
+        fig.subplots_adjust(top=0.95,
+                            bottom=0.05,
+                            left=0.075,
+                            right=0.925,
+                            hspace=0.2,
+                            wspace=0.2)
+        # plt.xlim(0,1000)
+        def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle='solid'):
+            dicts = {'df':df,'color':colors}
+            vals_dict ={'color'       : "black", 
+                        'linewidth'   : 0.5, 
+                        'linestyle'   :'solid'}
+            if type(value) is str:
+                vals_dict['label'] = value
+                for k in dicts.keys():
+                    cur_dict = dicts[k]
+                    if value in cur_dict.keys():
+                        vals_dict[k] = cur_dict[value]
+                    else:
+                        pass
+                
+                try:
+                    graphing_val = vals_dict.pop('df')
+                except KeyError:
+                    log.warning(f"No Data for {value}")
+                    return
+                axes.plot(graphing_val, **vals_dict)
+            else:
+                axes.plot(value, color=color, linewidth=linewidth, linestyle=linestyle, label='No name provided')
+            
+            if twins is True:
+                axes.legend(loc='upper right')
+            else:
+                axes.legend(loc='upper left')
+
+        # write data to plots side by side plots
+        for l in [0,1]:
+            
+            # ax[0,l].plot(df['mask_mse'],  color=colors['mask_mse'], linewidth=0.5)
+            # ax0[l].plot( df['mask_norm'], color=colors['mask_norm'],linewidth=0.5)
+            plotLine(ax[0,l], "mask_mse")
+            plotLine(ax0[l], "mask_norm", twins=True)
+            if avg_color is False:
+                plotLine(ax[1,l], 'dRed')
+                plotLine(ax[1,l], 'dGreen')
+                plotLine(ax[1,l], 'dBlue')
+                # ax[1,l].plot(df['dRed'],      color=colors['dRed'],     linewidth=0.5)
+                # ax[1,l].plot(df['dGreen'],    color=colors['dGreen'],   linewidth=1, linestyle='dashed')
+                # ax[1,l].plot(df['dBlue'],     color=colors['dBlue'],    linewidth=0.5, linestyle=(0, (5, 10)))
+            else:
+                plotLine(ax[1,l], average_color_diff)
+
+            #     ax[1,l].plot(average_color_diff,     color="Black",    linewidth=0.5)
+            plotLine(ax[2,l], 'green2red')
+            plotLine(ax2[l], "mask_mse", twins=True)
+        
+            # ax[2,l].plot(r2g,             color='navy',             linewidth=0.5)
+            # ax2[l].plot( df['mask_mse'],  color=colors['mask_mse'], linewidth=0.5)
+
+        # yscale on rightside plots
+        for k in [0,1,2]:
+            ax[k,1].set_yscale('log')
+        ax0[1].set_yscale('log')
+        ax2[1].set_yscale('log')
+
+        # Make grid
+        for g in [0,1,2]:
+            for h in [0,1]:
+                ax[g,h].grid(axis='x')
+                if g == 0:
+                    ax0[h].grid(axis='x')
+                    ax2[h].grid(axis='x')
+            # grax = fig.add_subplot(111)
+            # for _, spine in grax.spines.items():
+            #     spine.set_visible(False)
+            # grax.tick_params(labelleft=False, labelbottom=False, left=False, right=False )
+            # # grax.        
+            # grax.grid(axis="x")
+        
+
 if __name__ == "__main__":
     x = auraCheck()
-    x.fromVideo("Data/20251103_pfrr_smile-10.mp4")
-
+    log.debug("in main if statement")
+    log.debug("after video attempt")
+    x.plotCSV()
             
