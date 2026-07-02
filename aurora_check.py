@@ -14,6 +14,7 @@ import logging
 import matplotlib.pyplot as plt; plt.ion()
 import pandas as pd
 
+from YooperCam import YooperCam
 
 logging.basicConfig()
 DEBUG2 = 11
@@ -22,7 +23,7 @@ logging.addLevelName(DEBUG2,"DEBUG2")
 logging.addLevelName(DATA,"DATA")
 
 log = logging.getLogger("auraCheck")
-log.setLevel(level=30)
+log.setLevel(level=20)
 
 data_log = logging.getLogger("writeData")
 data_1 = logging.FileHandler("data.log")
@@ -32,7 +33,8 @@ data_log.addHandler(data_1)
 def data(msg): data_log.log(DATA, msg)
 
 class auraCheck():
-    def __init__(self) -> None:
+    def __init__(self, *args, **kwargs) -> None:
+        YooperCam.__init__(self, *args, **kwargs)
         self.img = None
         self.pre = None
         self.masked = None
@@ -43,16 +45,6 @@ class auraCheck():
         
         pass
 
-    def auroraDetection(self,*args,**kwargs) -> str:
-        '''
-        Checks for aurora and returns a true or false string. 
-        Run \"isAurora\" for a bool
-        '''
-        isAuro = self.isAurora(*args,**kwargs)
-        if isAuro is True:
-            return "Aurora Present"
-        else:
-            return "No Aurora Detected"
 
     def _resetAuroraImages(self,size) -> None:
         '''
@@ -179,12 +171,13 @@ class auraCheck():
             self.auraDict['dRed'] = dr
             self.auraDict['dGreen'] = dg
             self.auraDict['dBlue'] = db
-            self.auraDict['red2blue'] = r2b
-            self.auraDict['green2blue'] = g2b
-            self.auraDict['green2red'] = dg/dr
+            self.auraDict['d_red2blue'] = r2b
+            self.auraDict['d_green2blue'] = g2b
+            self.auraDict['d_green2red'] = dg/dr
 
             return color_sums
 
+       
 
 
         mask_norm, mask_mse = maskCheck()
@@ -197,6 +190,32 @@ class auraCheck():
         self.write2CSV(self.auraDict)
         return (mask_mse, mask_norm, color_sums)
 
+    def kClust(self, img, K=4, smaller=False):
+            if type(img) is str:
+                img = cv.imread(img)
+            Z = img.reshape((-1,3))
+            
+            ## convert to np.float32
+            Z = np.float32(Z)
+
+
+            log.debug("about to define the criteria")
+            ## define criteria, number of clusters(K) and apply kmeans()
+            criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+            ret,label,center=cv.kmeans(Z,K,None,criteria,10,cv.KMEANS_RANDOM_CENTERS)
+
+            log.debug("after kmeans are found")
+            ## Now convert back into uint8, and make original image
+            center = np.uint8(center)
+            res = center[label.flatten()]
+            res2 = res.reshape(img.shape)
+
+            res3 = cv.resize(res2, [int(res2.shape[0]/4),int(res2.shape[1]/4)])
+            cv.imshow('res3',res3)
+            cv.waitKey(0)
+            cv.destroyAllWindows()
+            return res2
+
     def write2CSV(self, dicty):
         with open(self.file, 'a', newline='') as cfile:
             cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
@@ -204,13 +223,6 @@ class auraCheck():
 
     def startCSV(self,dicty):
         if self._fileHasHeader is False:
-            try:
-                with open(self.file, 'rb') as cfile:
-                    sniffer = csv.Sniffer()
-                    self._fileHasHeader = sniffer.has_header(cfile.read(2048))
-            except FileNotFoundError:
-                log.debug(f"File was not found. {self.file}")
-                self._fileHasHeader = False
             with open(self.file, 'a', newline='') as cfile:
                 if self._fileHasHeader is False:
                     cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
@@ -219,11 +231,36 @@ class auraCheck():
         else:
             pass
 
+    def putText(self, frame):
+        log.debug(f"before isAurora is called with frame: {frame.shape}")
+        checked = self.isAurora(frame)
+        log.debug(f"AFTER isAurora is called with frame: {frame.shape}\n"
+                f"and checked : {checked}")
+    
+        if checked:
+            log.log(DEBUG2,f"checked is {checked}")
+            mask_mse, mask_norm, color_sum = checked[:]
+            dr, dg, db = color_sum[:]
+            aur_txt = (f"MSE from masking: {round(mask_mse,4)} \nNorm from masking"
+                    f": {round(mask_norm,2)}\nRed:{round(dr,3)}\nGreen:{round(dg,3)}\nBlue:{round(db,3)}")
+        else:
+            aur_txt = "No previous image, wait until next image"
+        
+        txt_offset = cv.getTextSize(aur_txt,cv.FONT_HERSHEY_SIMPLEX,0.5,2)
+        aur_txt = aur_txt.split('\n')
+        x=0
+        disp_frame = frame
+        for i in (aur_txt):
+            cv.putText(img=disp_frame, text=f"{i}", org=(10, int(disp_frame.shape[1]-15-x*1.25*txt_offset[0][1])),
+            fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
+            x=x+1
+        
+        return disp_frame
 
     def fromVideo(self, video_file):
         
         cap = cv.VideoCapture(video_file)
-        self.file = dt.now().strftime(f"Data/test_files/{(video_file.split('/')[-1]).split('.')[0]}_%d_%H-%M.csv")
+        self.file = dt.now().strftime(f"Data/test_files/{(video_file.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
         state = True
         while cap.isOpened():
             if state:
@@ -274,13 +311,16 @@ class auraCheck():
         cap.release()
         cv.destroyAllWindows()
 
-    def fromPhotos(self,folder="Data/test_photos"):
+    def fromPhotos(self,folder="Data/test_photos", vis_comp=False):
         '''
         Test auroras from a directory
         '''
         log.debug(f"starting the \'fromPhotos\' method with folder={folder}")
         photos = os.listdir(folder)
+        photos.sort()
         windowName = "Testing Images"
+
+        self.file = dt.now().strftime(f"Data/test_files/{(folder.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
 
         # image height
         disp_size = 800
@@ -297,52 +337,114 @@ class auraCheck():
 
         def stopOrGo(msg='Press space/n/c to continue, q to quit, or s to save image'):  # -> bool:
             'Get user input to continue setup'
-            usr_in = None
             while True:
-                usr_in = input(f"{msg}\n")
-                if usr_in.lower() in ['q', 'Q', 'quit']:
-                    return 'quit'
-                elif usr_in.lower() in [' ', '  ', 'n', 'next', 'c']:
-                    return 'next'
-                elif usr_in.lower() in ['s']:
-                    return 'save'
+                key_press = cv.waitKey(1) & 0xFF
+                log.debug(f"key press {key_press}")
+                if key_press == ord('q'): return 'quit'  # q for quit
+                if key_press == ord(' '): return 'next' # [space] for pause
+                if key_press == ord('s'): return 'save' # [space] for pause
 
+        log.info(f"there is {len(photos)}")
         for p in photos:
+            log.info(f"This is photo {p}\n there are {len(photos)} left")
+            self.auraDict['photo'] = p
+            if "Identifier" in p:
+                # photos.remove(p)
+                log.warning("Was not photo, skipping\n\n")
+                continue
             # go in order  somehow.
-            photo = f"{folder}/{p}"
+            photo = f"{folder}{p}"
             cur = cv.imread(photo)
 
-            checked = self.isAurora(cur)
-
-            disp_img = makeImage(cur)
-            if checked:
-                mask_mse, mask_norm = checked
-                aur_txt = (f"MSE from masking: {mask_mse}\nNorm (???) from masking"
-                        f": {mask_norm}")
-            else:
-                aur_txt = "No previous image, wait until next image"
-            cv.putText(disp_img, f"{aur_txt}", (10, disp_size-30), cv.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2,)
-
-            cv.imshow(windowName, cur)
+            display_img = self.putText(cur)
+            disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
+            cv.imshow(windowName, disp_this)
             cv.waitKey(1)
-            sOg = stopOrGo()
 
-            # Check for input
-            if sOg == 'quit':  # Wait 25 ms before next frame
-                break
-            elif sOg == 'save':
-                saveName = input("save name? (no safety)")
-                words = saveName.split(' ')
-                nameForCur = words[0] + '.png'
-                nameForFull= words[0] + '_display.png'
-                cv.imwrite(nameForCur, cur)
-                cv.imwrite(nameForFull,disp_img)
-                continue
-            elif sOg == 'next':
-                continue
+            if vis_comp:
+                sOg = stopOrGo()
+                # Check for input
+                if sOg == 'quit':  # Wait 25 ms before next frame
+                    break
+                elif sOg == 'save':
+                    saveName = input("save name? (no safety)")
+                    words = saveName.split(' ')
+                    nameForCur = words[0] + '.png'
+                    nameForFull= words[0] + '_display.png'
+                    cv.imwrite(nameForCur, cur)
+                    cv.imwrite(nameForFull,display_img)
+                    continue
+                elif sOg == 'next':
+                    log.info("Moving to next photo\n\n\n")
+                    continue
+            else:
+                pass
 
+    def fromLive(self, ycam):
+        '''
+        Test auroras from a directory
+        '''
+        log.debug(f"starting the \'fromLive\' method ")
+        # image height
+        disp_size = 800
+        border_width = 40
+        windowName = "Live Aurora Check"
+        vis_comp = False
+
+        def stopOrGo(msg='Press space/n/c to continue, q to quit, or s to save image'):  # -> bool:
+            'Get user input to continue setup'
+            while True:
+                key_press = cv.waitKey(1) & 0xFF
+                log.debug(f"key press {key_press}")
+                if key_press == ord('q'): return 'quit'  # q for quit
+                if key_press == ord(' '): return 'pause' # [space] for pause
+                if key_press == ord('s'): return 'save' # [space] for pause
+ 
+        while True:
+            log.info(f"This is photo {dt.now()}\n")
+            self.auraDict['photo'] = dt.now().strftime("%d/%m/%Y, %H:%M:%S")
+
+            # go in order  somehow.
+            cur = ycam.shot(exposure=1, return_img=True)
+
+            display_img = self.putText(cur)
+            disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
+            cv.imshow(windowName, disp_this)
+            cv.waitKey(1)
+
+            key_press = cv.waitKey(1) & 0xFF
+            log.debug(f"key press {key_press}")
+            if key_press == ord('q'): break  # q for quit
+            if key_press == ord(' '): vis_comp = True # [space] for pause
+
+            if vis_comp:
+                sOg = stopOrGo()
+                # Check for input
+                if sOg == 'quit':  # Wait 25 ms before next frame
+                    break
+                elif sOg == 'save':
+                    saveName = input("save name? (no safety)")
+                    words = saveName.split(' ')
+                    nameForCur = words[0] + '.png'
+                    nameForFull= words[0] + '_display.png'
+                    cv.imwrite(nameForCur, cur)
+                    cv.imwrite(nameForFull,display_img)
+                    continue
+                elif sOg == 'next':
+                    log.info("Continuing\n\n\n")
+                    continue
+                vis_comp=False
+            else:
+                pass
+
+
+    
     def plotCSV(self, file='', avg_color=False):
         'Plot aurora checking data from csv file'
+
+        # Declare global variables for external work
+        global df, colors
+        
         # Get latest file if none provided
         if file == '':
             try:
@@ -359,7 +461,6 @@ class auraCheck():
                         files_to_choose.remove(f)
                 file = files_to_choose[-1]
                 file = f"Data/test_files/{file}"
-        
         # Read data
         df = pd.read_csv(file,header=0)
         # Get figure
@@ -373,10 +474,13 @@ class auraCheck():
         x = range(0,df.shape[0])
         colors = {'mask_mse':'gray',
                   'mask_norm':'darkviolet',
-                  'dRed':'red',
-                  'dGreen':'green',
-                  'dBlue':'blue',
-                  'green2red':'navy'}
+                  'Red':'red',
+                  'Green':'green',
+                  'Blue':'blue',
+                  'dRed':'tomato',
+                  'dGreen':'lime',
+                  'dBlue':'cornflowerblue',
+                  'd_green2red':'navy'}
         xcx = ("color=colors[\'mask_mse\'], linewidth=1.0")
 
         # Edit figure
@@ -433,7 +537,7 @@ class auraCheck():
                 plotLine(ax[1,l], average_color_diff)
 
             #     ax[1,l].plot(average_color_diff,     color="Black",    linewidth=0.5)
-            plotLine(ax[2,l], 'green2red')
+            plotLine(ax[2,l], 'd_green2red')
             plotLine(ax2[l], "mask_mse", twins=True)
         
             # ax[2,l].plot(r2g,             color='navy',             linewidth=0.5)
@@ -458,11 +562,73 @@ class auraCheck():
             # grax.tick_params(labelleft=False, labelbottom=False, left=False, right=False )
             # # grax.        
             # grax.grid(axis="x")
+
+def plotColorComparison(df):
+    'Plot aurora checking data from csv file'
+
+    # Get figure
+    fig, ax = plt.subplots(3, sharex=True,sharey=False)
+    r2g = df['dRed']/df['dGreen']
+    ax0 = [ax[0],ax[0].twinx()]
+    ax1 = [ax[1],ax[1].twinx()]
+    ax2 = [ax[2],ax[2].twinx()]
+    average_color_diff = (df['dBlue'] + df['dGreen'] + df['dRed'] )/3
+
+    # initialize constants
+    x = range(0,df.shape[0])
+
+    xcx = ("color=colors[\'mask_mse\'], linewidth=1.0")
+
+    # Edit figure
+    fig.subplots_adjust(top=0.95,
+                        bottom=0.05,
+                        left=0.075,
+                        right=0.925,
+                        hspace=0.2,
+                        wspace=0.2)
+    # plt.xlim(0,1000)
+    def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle='solid'):
+        dicts = {'df':df,'color':colors}
+        vals_dict ={'color'       : "black", 
+                    'linewidth'   : 0.5, 
+                    'linestyle'   :'solid'}
+        if type(value) is str:
+            vals_dict['label'] = value
+            for k in dicts.keys():
+                cur_dict = dicts[k]
+                if value in cur_dict.keys():
+                    vals_dict[k] = cur_dict[value]
+                else:
+                    pass
+            
+            try:
+                graphing_val = vals_dict.pop('df')
+            except KeyError:
+                log.warning(f"No Data for {value}")
+                return
+            axes.plot(graphing_val, **vals_dict)
+        else:
+            axes.plot(value, color=color, linewidth=linewidth, linestyle=linestyle, label='No name provided')
         
+        if twins is True:
+            axes.legend(loc='upper right')
+        else:
+            axes.legend(loc='upper left')
+
+    # write data to plots side by side plots
+    plotLine(ax0[0], 'dRed')
+    plotLine(ax1[0], 'dGreen')
+    plotLine(ax2[0], 'dBlue')
+    plotLine(ax0[1], 'Red',    twins=True, linewidth=1, linestyle='dashed')
+    plotLine(ax1[1], 'Green',  twins=True, linewidth=1, linestyle='dashed')
+    plotLine(ax2[1], 'Blue',   twins=True, linewidth=1, linestyle='dashed')
+
+    # Make grid
+    for g in [ax0,ax1,ax2]:
+        for h in [0,1]:
+            g[h].grid(axis='x')
 
 if __name__ == "__main__":
-    x = auraCheck()
-    log.debug("in main if statement")
-    log.debug("after video attempt")
-    x.plotCSV()
+    x = auraCheck(0)
+    x.fromPhotos("Data/test_photos/leds/")
             
