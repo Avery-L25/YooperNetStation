@@ -60,16 +60,12 @@ class YooperCam(ZWOCamera):
 
         ZWOCamera.__init__(self, *args, **kwargs)
 
+        # Dictionary to convert image type to ID number
+        self._dictImgType = {'RAW8': 0, 'RGB24': 1, 'RAW16': 2, 'Y8': 3}
+
         # Dictionaries to help view info
         self._dictControlVals = {}
         self._dictControlFacts = {}
-        # Dictionary to convert image type to ID number
-        self._dictImgType = {'RAW8': 0, 'RGB24': 1, 'RAW16': 2, 'Y8': 3}
-        
-        # setup class locations
-        self.img_folder = ''    
-        self.img_info_file = ''
-
         # Assign controls to dictionary and attribute of object
         numOfControls = pza.getNumOfControls(self._cameraIndex)
         for controlIndex in range(numOfControls):
@@ -94,12 +90,22 @@ class YooperCam(ZWOCamera):
         self.start_x, self.start_y = pza.getStartPos(self._cameraID)
         self.width, self.height, self.binning, self.imageType = self._roi[2:]
 
+        # Saving Informartiong
+        self._imgName = ''  # To track current name for logging purposes
+        self.img_folder = ''  # Track saving location internally    
+        self.img_info_file = ''
+        self.file_name = ''  # Track info file name
+
         # Configure object ROI and Controls from toml file
+        # Assign default locations
         self.configFromToml()
 
-        # setup aurora detection params
+        # Setup aurora detection params                                     #! Update after aurora detectoin finished
+        self.img = None
+        self.pre = None
+        self.masked = None
+        self.premask = None
         self._resetAuroraImages(self.width)
-        self._imgName = None
         self._auroraFlag = False
 
         return None
@@ -120,7 +126,7 @@ class YooperCam(ZWOCamera):
     def __getattr__(self, name):
         pass
 
-    def liveShots(self, exposure = 1):
+    def liveShots(self, exposure = 1) -> None:
         '''
         Captures and saves images to images folder.
         A simple loop using the built in 'shot' method.
@@ -172,7 +178,7 @@ class YooperCam(ZWOCamera):
         cv.destroyAllWindows()
 
     def shot(self, save=False, display=False, return_img=False,
-             imgName='', path='', exposure=1):
+             imgName='', path='', exposure=1) -> np.ndarray:
         '''
         Take an image view from the ASI Camera
         Takes kwargs save (bool), display (bool), imgName (string),
@@ -242,44 +248,62 @@ class YooperCam(ZWOCamera):
         if return_img is True:
             return x
         else:
-            return None
+            return np.asarray(None)
 
-    def writeData(self, imgName=False):
+    def writeData(self, imgName='', file='') -> None:
         '''
-        Method to save data to hdf5 or csv file given.
+        Method to save data to csv file given.
         Writes the image name, time, exposure, gain, aurora flag, errors.
 
         TODO: Could add others such as resolution, file size, or other.
+             hdf5
+             add bool/log
         '''
-        pass
+        # Get writing location.
+        if file == '':
+            file = self.img_info_file
         
-        # Get items to be written
-        if imgName is False:
-            imgName = self._imgName
+        if os.path.exists(file):
+            # Assumes that if the file exists, it already has a header.
+            write_header = False        
+        else:
+            # Seperate the path from the file
+            write_header=True
+            split_path = file.rpartition('/')
+            if split_path.count('') == 2:
+                # This is true if there is no folders 
+                pass
+            else:
+                # Make the path for the file if it doesn't exist
+                os.mkdir(split_path[1])
+        
         cur_time = dt.now().strftime("%Y/%m/%d, %H:%M:%S")                  #? Should it be a str or datetime
+        file_date = dt.now().strftime("%y_%m_%d")
+        camFileName = str(file_date + "_cam.csv")
+
+
+        # Get items to be written
+        if imgName == '':
+            imgName = self._imgName
         exposure = self.exposure
         gain = self.gain
         aur_flag = self._auroraFlag
         error = None                                                     # todo add error handling
         
-        dict_to_write = {'Image Name':imgName, 'Timestamp':cur_time,     # todo add error to dict
-                         'Exposure':exposure, 'Gain':gain,
+        # # todo add error to dict  
+        # #? should the dictionary be define here?
+        dict_to_write = {'Image Name':imgName,
+                         'Timestamp':cur_time,     
+                         'Exposure':exposure,
+                         'Gain':gain,
                          'Aurora Flag':aur_flag}
 
-        # Initialize Camera "Log File"                                   # todo update file path management
-        file_date = dt.now().strftime("%y_%m_%d")
-        camFileName = str(file_date + "_cam.csv")
-        
-        if os.path.exists(camFileName) is False:
-            write_header = True
-        else:
-            write_header = False
-        
-        # if 
-        with open(camFileName, 'a', newline='') as cFile: 
+        # Write data from dictionary to file
+        with open(file, 'a', newline='') as cFile: 
             cWriter = csv.DictWriter(cFile, fieldnames=dict_to_write.keys())
             
             if write_header is True:                                        #! If we write config settings it could be here, otherwise a seperate log file?
+                # Write header if new file
                 cWriter.writeheader()
 
             cWriter.writerow(dict_to_write)
@@ -288,7 +312,7 @@ class YooperCam(ZWOCamera):
         'Write the camera configuration to a file'
         pass
         
-    def auroraDetection(self,*args,**kwargs):
+    def auroraDetection(self,*args,**kwargs) -> str:
         '''
         Checks for aurora and returns a true or false string. 
         Run \"isAurora\" for a bool
@@ -299,7 +323,7 @@ class YooperCam(ZWOCamera):
         else:
             return "No Aurora Detected"
 
-    def _resetAuroraImages(self,size):
+    def _resetAuroraImages(self,size) -> None:
         '''
         Sets up default testing images for aurora detection, takes a size 
         assuming image is a square for an all-sky image
@@ -308,7 +332,7 @@ class YooperCam(ZWOCamera):
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
 
-    def isAurora(self,img=None):
+    def isAurora(self,img: np.ndarray):  #! Output TBD
         '''
         Check most images against previous for bright, green/blue areas and
         returns a flag (bool) if detected.
@@ -353,7 +377,7 @@ class YooperCam(ZWOCamera):
             ### Create masks from current image
             # Blue/Green ratio
             gbratio = cv.divide(b1, g1)  #? blue / green
-            maskgbratio = cv.inRange(gbratio, 0.9, 1.3)  #? any cell with a b/g ratio between 0.9 and 1.3 is set to 255 
+            maskgbratio = cv.inRange(gbratio, [0.9], [1.3])  #? any cell with a b/g ratio between 0.9 and 1.3 is set to 255 
 
             # Red/Green ratio
             grratio = cv.divide(r1, g1)  #! red / green
@@ -403,7 +427,7 @@ class YooperCam(ZWOCamera):
         self._auroraFlag = bool(mask_norm)  # currently any difference in the 'very green' region will be marked as a potential aurora
         return bool(mask_mse)
 
-    def configFromToml(self):
+    def configFromToml(self) -> None:
         '''
         Configure Camera controls and ROI from toml file
 
@@ -476,7 +500,7 @@ class YooperCam(ZWOCamera):
 
     ### Should this be changed to an 'roi getter'
     def setROI(self, width=None, height=None, binning=None, imageType=None,
-               start_x=None, start_y=None):
+               start_x=None, start_y=None) -> None:
         '''
         Set all portions of the ROI. Any unspecified params will remain the same.
         
@@ -635,7 +659,7 @@ class YooperCam(ZWOCamera):
                 value = val
             logging.debug(f"{con_name} was set to {value}")
 
-    def liveView(self, dim=480):
+    def liveView(self, dim=480) -> None:
         '''
         Live view with OpenCV interface. Press 'q' key to quit and space to pause.
         Allows live changing of gain and exposure while flagging for aurora.
@@ -728,7 +752,7 @@ class YooperCam(ZWOCamera):
         self.stopVideoCapture()
         cv.destroyAllWindows()
 
-    def liveTestView(self, disp_size=480):
+    def liveTestView(self, disp_size=480) -> None:
         '''
         Live view with visuals on all testing parameters.
         Built in operations to help with analysis.
@@ -794,9 +818,11 @@ class YooperCam(ZWOCamera):
             disp_image = np.full((canvas_size, canvas_size,3),100, dtype=np.uint8)
         else:
             disp_image = np.zeros((disp_size, disp_size, 3))
+            pos
             pass
 
         # Initialize parameters
+        global ds, state, single_shot, previousTime
         ds = disp_size
         state = True
         single_shot = False

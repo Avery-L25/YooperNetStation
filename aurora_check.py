@@ -34,11 +34,10 @@ def data(msg): data_log.log(DATA, msg)
 
 class auraCheck():
     def __init__(self, *args, **kwargs) -> None:
-        YooperCam.__init__(self, *args, **kwargs)
-        self.img = None
-        self.pre = None
+        self.img    = None
+        self.pre    = None
         self.masked = None
-        self.premask = None
+        self.premask= None
         self.file = None # dt.now().strftime("Data/test_files/check_data_%Y-%m-%d_%H-%M-%S.csv")
         self.auraDict = {}
         self._fileHasHeader = False
@@ -223,11 +222,14 @@ class auraCheck():
 
     def startCSV(self,dicty):
         if self._fileHasHeader is False:
-            with open(self.file, 'a', newline='') as cfile:
-                if self._fileHasHeader is False:
-                    cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
-                    cwrite.writeheader()
-                    self._fileHasHeader = True
+            if os.path.exists(self.file) is False:
+                with open(self.file, 'a', newline='') as cfile:
+                    if self._fileHasHeader is False:
+                        cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
+                        cwrite.writeheader()
+                        self._fileHasHeader = True
+            else:
+                self._fileHasHeader = True             
         else:
             pass
 
@@ -249,7 +251,7 @@ class auraCheck():
         txt_offset = cv.getTextSize(aur_txt,cv.FONT_HERSHEY_SIMPLEX,0.5,2)
         aur_txt = aur_txt.split('\n')
         x=0
-        disp_frame = frame
+        disp_frame = frame.copy()
         for i in (aur_txt):
             cv.putText(img=disp_frame, text=f"{i}", org=(10, int(disp_frame.shape[1]-15-x*1.25*txt_offset[0][1])),
             fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
@@ -386,11 +388,13 @@ class auraCheck():
         '''
         log.debug(f"starting the \'fromLive\' method ")
         # image height
+        self.file = dt.now().strftime(f"Data/test_files/Live_%m-%d_%H.csv")
+
         disp_size = 800
         border_width = 40
         windowName = "Live Aurora Check"
         vis_comp = False
-
+        display = False
         def stopOrGo(msg='Press space/n/c to continue, q to quit, or s to save image'):  # -> bool:
             'Get user input to continue setup'
             while True:
@@ -409,7 +413,8 @@ class auraCheck():
 
             display_img = self.putText(cur)
             disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
-            cv.imshow(windowName, disp_this)
+            if display is True: 
+                cv.imshow(windowName, disp_this)
             cv.waitKey(1)
 
             key_press = cv.waitKey(1) & 0xFF
@@ -563,31 +568,8 @@ class auraCheck():
             # # grax.        
             # grax.grid(axis="x")
 
-def plotColorComparison(df):
-    'Plot aurora checking data from csv file'
 
-    # Get figure
-    fig, ax = plt.subplots(3, sharex=True,sharey=False)
-    r2g = df['dRed']/df['dGreen']
-    ax0 = [ax[0],ax[0].twinx()]
-    ax1 = [ax[1],ax[1].twinx()]
-    ax2 = [ax[2],ax[2].twinx()]
-    average_color_diff = (df['dBlue'] + df['dGreen'] + df['dRed'] )/3
-
-    # initialize constants
-    x = range(0,df.shape[0])
-
-    xcx = ("color=colors[\'mask_mse\'], linewidth=1.0")
-
-    # Edit figure
-    fig.subplots_adjust(top=0.95,
-                        bottom=0.05,
-                        left=0.075,
-                        right=0.925,
-                        hspace=0.2,
-                        wspace=0.2)
-    # plt.xlim(0,1000)
-    def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle='solid'):
+def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle='solid'):
         dicts = {'df':df,'color':colors}
         vals_dict ={'color'       : "black", 
                     'linewidth'   : 0.5, 
@@ -615,6 +597,33 @@ def plotColorComparison(df):
         else:
             axes.legend(loc='upper left')
 
+
+def plotColorComparison(df):
+    'Plot aurora checking data from csv file'
+    global fig, ax, ax0, ax1, ax2, plot
+    # Get figure
+    fig, ax = plt.subplots(3, sharex=True,sharey=False)
+    r2g = df['dRed']/df['dGreen']
+    ax0 = [ax[0],ax[0].twinx()]
+    ax1 = [ax[1],ax[1].twinx()]
+    ax2 = [ax[2],ax[2].twinx()]
+    average_color_diff = (df['dBlue'] + df['dGreen'] + df['dRed'] )/3
+
+    # initialize constants
+    x = range(0,df.shape[0])
+
+    xcx = ("color=colors[\'mask_mse\'], linewidth=1.0")
+
+    # Edit figure
+    fig.subplots_adjust(top=0.95,
+                        bottom=0.05,
+                        left=0.075,
+                        right=0.925,
+                        hspace=0.2,
+                        wspace=0.2)
+    # plt.xlim(0,1000)
+    
+
     # write data to plots side by side plots
     plotLine(ax0[0], 'dRed')
     plotLine(ax1[0], 'dGreen')
@@ -629,6 +638,5 @@ def plotColorComparison(df):
             g[h].grid(axis='x')
 
 if __name__ == "__main__":
-    x = auraCheck(0)
-    x.fromPhotos("Data/test_photos/leds/")
+    x = auraCheck()
             
