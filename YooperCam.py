@@ -93,8 +93,7 @@ class YooperCam(ZWOCamera):
         # Saving Informartiong
         self._imgName = ''  # To track current name for logging purposes
         self.img_folder = ''  # Track saving location internally    
-        self.img_info_file = ''
-        self.file_name = ''  # Track info file name
+        self._imgInfoFile = '' # Track info file name
 
         # Configure object ROI and Controls from toml file
         # Assign default locations
@@ -115,7 +114,7 @@ class YooperCam(ZWOCamera):
               f"Intended to take all-sky images and flag potential auorora\n"
               f"in parallel with magnetometers and other sensors.\n\n"
               f"Saving images to {self.img_folder}\nSaving flags + other cam data"
-              f"to {self.img_info_file}.\n")
+              f"to {self.imgInfoFile}.\n")
 
         print(f"ROI")
         self.roi
@@ -250,6 +249,15 @@ class YooperCam(ZWOCamera):
         else:
             return np.asarray(None)
 
+    @property
+    def imgInfoFile(self):
+        'The info file for yooper camera settings, images, and aurora flags'
+        return self._imgInfoFile
+    
+    @imgInfoFile.setter
+    def imgInfoFile(self, file):
+        self._imgInfoFile = file 
+
     def writeData(self, imgName='', file='') -> None:
         '''
         Method to save data to csv file given.
@@ -261,7 +269,7 @@ class YooperCam(ZWOCamera):
         '''
         # Get writing location.
         if file == '':
-            file = self.img_info_file
+            file = self.imgInfoFile
         
         if os.path.exists(file):
             # Assumes that if the file exists, it already has a header.
@@ -275,7 +283,7 @@ class YooperCam(ZWOCamera):
                 pass
             else:
                 # Make the path for the file if it doesn't exist
-                os.mkdir(split_path[1])
+                os.mkdir(split_path[0])
         
         cur_time = dt.now().strftime("%Y/%m/%d, %H:%M:%S")                  #? Should it be a str or datetime
         file_date = dt.now().strftime("%y_%m_%d")
@@ -427,14 +435,18 @@ class YooperCam(ZWOCamera):
         self._auroraFlag = bool(mask_norm)  # currently any difference in the 'very green' region will be marked as a potential aurora
         return bool(mask_mse)
 
-    def configFromToml(self) -> None:
+    def configFromToml(self, default=False) -> None:
         '''
         Configure Camera controls and ROI from toml file
 
         TODO: Assign Values so they are grabbed by the camera
         '''
         # Load Config Files
-        config_file_path = os.getcwd() + "/.YooperConfig.toml"
+        if default is True:
+            config_file_path = os.getcwd() + "Setup/default.toml"
+        elif default is False:
+            config_file_path = os.getcwd() + "/.YooperConfig.toml"
+
         yoop_config      = toml.load(config_file_path)
 
         # Setup Default Values
@@ -447,7 +459,7 @@ class YooperCam(ZWOCamera):
 
         # Write Storage Locations
         self.img_folder     = yoop_config['paths']['Camera_Images_Collection']    
-        self.img_info_file  = yoop_config['paths']['Camera_Info_Folder'] 
+        self.imgInfoFile  = yoop_config['paths']['Camera_Info_Folder'] 
 
         # Write Storage Locations
         self.img_name_format    = yoop_config['formats']['Image_Name_Format']    

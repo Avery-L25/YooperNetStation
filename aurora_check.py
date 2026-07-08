@@ -23,7 +23,7 @@ logging.addLevelName(DEBUG2,"DEBUG2")
 logging.addLevelName(DATA,"DATA")
 
 log = logging.getLogger("auraCheck")
-log.setLevel(level=20)
+log.setLevel(level=30)
 
 data_log = logging.getLogger("writeData")
 data_1 = logging.FileHandler("data.log")
@@ -318,7 +318,8 @@ class auraCheck():
         Test auroras from a directory
         '''
         log.debug(f"starting the \'fromPhotos\' method with folder={folder}")
-        photos = os.listdir(folder)
+        
+        photos = self.dir2files(folder)
         photos.sort()
         windowName = "Testing Images"
 
@@ -346,17 +347,19 @@ class auraCheck():
                 if key_press == ord(' '): return 'next' # [space] for pause
                 if key_press == ord('s'): return 'save' # [space] for pause
 
-        log.info(f"there is {len(photos)}")
+        num_photos = len(photos)
+        log.info(f"there is {num_photos}")
         for p in photos:
-            log.info(f"This is photo {p}\n there are {len(photos)} left")
-            self.auraDict['photo'] = p
+            log.info(f"This is photo {p}\n there are {num_photos} left")
+            num_photos = num_photos - 1
+            self.auraDict['photo'] = p.rpartition('/')[2]
             if "Identifier" in p:
                 # photos.remove(p)
                 log.warning("Was not photo, skipping\n\n")
                 continue
             # go in order  somehow.
-            photo = f"{folder}{p}"
-            cur = cv.imread(photo)
+            # photo = f"{folder}{p}"
+            cur = cv.imread(p)
 
             display_img = self.putText(cur)
             disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
@@ -381,6 +384,9 @@ class auraCheck():
                     continue
             else:
                 pass
+        cv.waitKey(1)
+        cv.destroyAllWindows()
+        log.info("Windows destroyed")
 
     def fromLive(self, ycam):
         '''
@@ -442,7 +448,26 @@ class auraCheck():
             else:
                 pass
 
-
+    def dir2files(self, direc):
+        'Gives back a list of all the files in a directory'
+        files = []
+        for r,d,f in os.walk(direc):
+            log.debug(f"\nr = {r}\nd = {d} \n\n\n f = {f}")
+            if d == []:
+                d = ''
+            
+            if f == []:
+                pass
+            elif type(f) is list:
+                for i in f:
+                    file = os.path.join(r,d,i)
+                    log.debug(file)
+                    files.append(file)
+            else:
+                file = os.path.join(r,d,f)
+                log.debug(file)
+                files.append(f)
+        return files
     
     def plotCSV(self, file='', avg_color=False):
         'Plot aurora checking data from csv file'
