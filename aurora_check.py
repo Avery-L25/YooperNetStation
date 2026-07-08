@@ -353,6 +353,7 @@ class auraCheck():
             log.info(f"This is photo {p}\n there are {num_photos} left")
             num_photos = num_photos - 1
             self.auraDict['photo'] = p.rpartition('/')[2]
+            self.auraDict['folder'] = p.split('/')[-2]
             if "Identifier" in p:
                 # photos.remove(p)
                 log.warning("Was not photo, skipping\n\n")
