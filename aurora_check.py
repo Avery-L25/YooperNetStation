@@ -42,6 +42,11 @@ class auraCheck():
         self.auraDict = {}
         self._fileHasHeader = False
         
+        # K clustering do
+        self.doKCluster = False
+        self._kValue = 4
+        self._kSmall = False
+        
         pass
 
 
@@ -54,7 +59,7 @@ class auraCheck():
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
 
-    def isAurora(self,img):
+    def isAurora(self, img):
         '''
         Check most images against previous for bright, green/blue areas and
         returns a flag (bool) if detected.
@@ -67,10 +72,14 @@ class auraCheck():
 
         TODO: Fix pre-image assignment. We want to be able 
         '''
+        start_proc = dt.now()  # Get start of processing time
         # Ensure there is an image to work with
         if img is None:
             log.warning("Image not provided, cannot check for aurora")
         
+        if self.doKCluster is True:
+            img = self.kClust(img, Display=False)
+
         # If there is no previous image, set current image as previous
         log.debug("before checking if there is a previous image")
         if self.pre is None:
@@ -185,35 +194,66 @@ class auraCheck():
         log.info(f"mask_norm = {mask_norm} and mask_mse = {mask_mse}")
         self._auroraFlag = bool(mask_norm)  # currently any difference in the 'very green' region will be marked as a potential aurora
 
+        finish_proc = dt.now()  # Get end of processing
+        proc_time = finish_proc - start_proc
+        log.info(f"Processing tooking {proc_time}")
+        self.auraDict['Processing Time'] = proc_time
+
+        # Write info to csv
         if self._fileHasHeader is False: self.startCSV(self.auraDict)
         self.write2CSV(self.auraDict)
+
         return (mask_mse, mask_norm, color_sums)
 
-    def kClust(self, img, K=4, smaller=False):
-            if type(img) is str:
-                img = cv.imread(img)
-            Z = img.reshape((-1,3))
+    def kClust(self, img, Display=False):
+        start = dt.now()
+        K = self._kValue
+
+        if type(img) is str:
+            img = cv.imread(img)
+        
+        if self._kSmall is True:
+            img = cv.resize(img, [int(img.shape[0]/4),int(img.shape[1]/4)])
+        
+        Z = img.reshape((-1,3))
+        
+        ## convert to np.float32
+        Z = np.float32(Z)
+
+
+        log.debug("about to define the criteria")
+        ## define criteria, number of clusters(K) and apply kmeans()
+        criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+        ret,label,center=cv.kmeans(Z,K,None,criteria,10,cv.KMEANS_RANDOM_CENTERS)
+
+        log.debug("after kmeans are found")
+        ## Now convert back into uint8, and make original image
+        center = np.uint8(center)
+        res = center[label.flatten()]
+        res2 = res.reshape(img.shape)
+        finish = dt.now()
+        delta_time = finish - start
+
+        # Do not display during image processing.
+        if Display is True:    
+            # Dont shrink image twice
+            if self._kSmall is True:
+                res3 = res2
+            else:
+                res3 = cv.resize(res2, [int(res2.shape[0]/4),int(res2.shape[1]/4)])
             
-            ## convert to np.float32
-            Z = np.float32(Z)
 
-
-            log.debug("about to define the criteria")
-            ## define criteria, number of clusters(K) and apply kmeans()
-            criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-            ret,label,center=cv.kmeans(Z,K,None,criteria,10,cv.KMEANS_RANDOM_CENTERS)
-
-            log.debug("after kmeans are found")
-            ## Now convert back into uint8, and make original image
-            center = np.uint8(center)
-            res = center[label.flatten()]
-            res2 = res.reshape(img.shape)
-
-            res3 = cv.resize(res2, [int(res2.shape[0]/4),int(res2.shape[1]/4)])
+            cv.putText(img=res3, text=f"{delta_time}", org=(10, int(res3.shape[1]-15)),
+                fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
             cv.imshow('res3',res3)
-            cv.waitKey(0)
+            while True:
+                key_press = cv.waitKey(1) & 0xFF
+                log.debug(f"key press {key_press}")
+                if key_press == ord('q'): break  # q for quit
+                if key_press == ord('s'): cv.imwrite(os.path.join('Data',input('name of file')),res3) # [space] for pause
             cv.destroyAllWindows()
-            return res2
+
+        return res2
 
     def write2CSV(self, dicty):
         with open(self.file, 'a', newline='') as cfile:
@@ -493,7 +533,7 @@ class auraCheck():
                 file = files_to_choose[-1]
                 file = f"Data/test_files/{file}"
         # Read data
-        df = pd.read_csv(file,header=0)
+        df = pd.read_csv(file, header=0)
         # Get figure
         fig, ax = plt.subplots(3,2, sharex=True,sharey=False)
         r2g = df['dRed']/df['dGreen']

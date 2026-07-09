@@ -27,8 +27,6 @@ wkdir = os.getcwd()
 config_file_path = wkdir + "/.YooperConfig.toml"
 yoop_config = toml.load(config_file_path)
 
-# 
-
 # Write Storage Locations
 yoop_paths = yoop_config['paths']
 img_folder_path     = wkdir + yoop_paths['Camera_Images_Collection']    
@@ -46,6 +44,9 @@ sensor_data_format = yoop_form['Sensor_Data_Format']
 
 # Define constants
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+file_ext_del = ['png', 'csv']
+safe_dirs = ['Sensors']
+rclone_remote = yoop_paths['REMOTE_CONFIG']
 
 # Define functions # todo check rclone setup for installer
 def rclone(path='', folder=''):
@@ -63,10 +64,10 @@ def rclone(path='', folder=''):
         at remote a new folder will be made.
     '''
     print(folder)
-    
+    remote_path = os.path.join(rclone_remote,folder)
     # create command to upload folder using rclone
-    command = ["rclone", "copy", "/home/amland/Documents/txt_duds", "remote:"]
-    str_cmd = f"rclone copy {path} remote:{folder}"
+    command = ["rclone", "copy", path, remote_path]
+    str_cmd = f"rclone copy {path} {remote_path}"
     
     # update a list to use directly
     print(command)
@@ -222,8 +223,38 @@ def deleteFiles(path):
     '''
     Deletes files after upload verification.
     '''
-    return None
+    global file_ext_del, safe_dirs
     # option 1: methodically, seperately delete each file. Can look for flags or unique filetype
+    for root,dirs,files in os.walk('projects',topdown=False):
+        # skip any roots or directories we want to blacklist
+        if any(item in root for item in safe_dirs):
+            continue
+
+        # If there are files in the directory delete based on #! extension or flag
+        if files == []:
+            pass
+        elif type(files) is list:
+            for file in files:
+                if file.rpartition('.')[2] in file_ext_del:
+                    error(f"deleting {file}")
+                    # os.remove(os.path.join(root,file))
+        
+        # Delete the directory if emptied  #? force delete if there is something else?
+        if dirs == []:
+            pass
+        else:
+            for d in dirs:
+                if d in safe_dirs:
+                    continue
+                d_len = len(os.listdir(os.path.join(root,d)))
+                if d_len == 0:
+                    error(f"deleting empty dir {d}")
+                    # os.rmdir(os.path.join(root,d))
+                else:
+                    log(f"{d_len} files in {d}")
+        print(f"roots are {root}")
+        print(f"Directories ares{dirs}")
+        print(f"Files are {files}\n\n")
     # os.remove to delete a file
     # os.rmdir to delete an empty directory
 

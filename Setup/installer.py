@@ -7,6 +7,10 @@ import sys
 
 ### Assign paths
 #! Update to be in JSON
+working_dir = os.getcwd()
+full_path = os.path.realpath(__file__)
+rel_dir = os.path.dirname(__file__)
+
 # Project Vars
 PROJECT_NAME="YooperNetStation"
 USERNAME=os.environ['LOGNAME']
@@ -16,20 +20,25 @@ VENV_DIR=f"{PROJECT_DIR}/$VENV_NAME"
 GIT_REPO="https://github.com/Avery-L25/$PROJECT_NAME.git"
 SERVICE_USER="python_service"
 
-# Setup files
-pkglist="dependencies.txt"
-PYTHON_REQS="requirements.txt"
 
-# Services / automation scripts
-SERVICE_DIR=NotImplemented
-SERVICE_FILE="yoopernet.service"
-STARTER_SCRIPT="startup.sh"                                                 #! UPDATE THIS
+# Local Files
+def getRef(fname):
+    'Make path file that will be referenced or moved'
+    return os.path.join(rel_dir,fname)
+
+PKG_LIST        =getRef("dependencies.txt")
+PYTHON_REQS     =getRef("requirements.txt")
+SERVICE_DIR     =getRef("NotImplemented")
+SERVICE_FILE    =getRef("yoopernet.service")
+STARTER_SCRIPT  =getRef("startup.sh")                                          #! UPDATE THIS
+DEFAULT_TOML    =getRef("default.toml")
 
 # Conditions
 make_venv = False
 all_check_yes = False
 
-# Run commands from strings
+# region functions
+#  Run commands from strings
 def runStr(cmd: str):
     command = cmd.split(' ')
     subprocess.run(command, check=True)
@@ -106,9 +115,11 @@ error = txt.error
 log = txt.log
 success = txt.success
 bold = txt.bold
+# endregion
+
 
 # ============================================
-# Upgrade system with necessary packages
+# region Upgrade system
 # ============================================
 
 # 1: Update and Upgrade
@@ -120,11 +131,11 @@ runStr("sudo apt-get upgrade -y")
 
 # 2: Get dependencies
 log("Getting Dependencies")
-if stopOrGo(msg=f"install system dependencies from {pkglist}",
+if stopOrGo(msg=f"install system dependencies from {PKG_LIST}",
             cnt_override=all_check_yes):
 
     try:
-        runStr(f"sudo apt-get install {pkglist}")
+        runStr(f"sudo apt-get install {PKG_LIST}")
         log("Success")
     except subprocess.CalledProcessError as e:
         error(f"Error occurred while attempting to install dependencies."
@@ -132,7 +143,7 @@ if stopOrGo(msg=f"install system dependencies from {pkglist}",
         pass
 
 # ============================================
-# Setup Python
+# region Setup Python
 # ============================================
 
 # 1: Update repository
@@ -169,10 +180,19 @@ except subprocess.CalledProcessError as e:
     pass
 success( "Successfully installed python libraries")
 
+# 4: Copy toml file to directory
+try:
+    # Copy toml file
+    runStr(f"copy {DEFAULT_TOML} {PROJECT_DIR}")
+    success(f"Copied toml file to project directory")
+except subprocess.CalledProcessError as e:
+    error(f"Error occurred while attempting to copy toml file."
+          + f"\nError Code: {bold(e.returncode)}")
+    pass
 # TODO: Make section that assigns files to system (ie. yoopercam when called)
 
-### ============================================
-# Setup Services for Scripts
+# ============================================
+# region Setup Services
 # ============================================
 #! NEED TO ADD THE STARTER SCRIPT SETUP WHEN THAT IS FINISHED
 sys.exit()
