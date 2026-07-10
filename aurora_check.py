@@ -45,7 +45,7 @@ class auraCheck():
         # K clustering do
         self.doKCluster = False
         self._kValue = 4
-        self._kSmall = False
+        self._kSmall = 0  # 0==Reg, 1==Reg->Shrink, 2==Small
         
         pass
 
@@ -212,7 +212,7 @@ class auraCheck():
         if type(img) is str:
             img = cv.imread(img)
         
-        if self._kSmall is True:
+        if self._kSmall == 2:
             img = cv.resize(img, [int(img.shape[0]/4),int(img.shape[1]/4)])
         
         Z = img.reshape((-1,3))
@@ -237,7 +237,7 @@ class auraCheck():
         # Do not display during image processing.
         if Display is True:    
             # Dont shrink image twice
-            if self._kSmall is True:
+            if self._kSmall == 2:
                 res3 = res2
             else:
                 res3 = cv.resize(res2, [int(res2.shape[0]/4),int(res2.shape[1]/4)])
@@ -253,6 +253,10 @@ class auraCheck():
                 if key_press == ord('s'): cv.imwrite(os.path.join('Data',input('name of file')),res3) # [space] for pause
             cv.destroyAllWindows()
 
+        if self._kSmall == 1:
+            res1 = cv.resize(res2, [int(res2.shape[0]/4),int(res2.shape[1]/4)])
+            return res1
+        
         return res2
 
     def write2CSV(self, dicty):
@@ -299,10 +303,15 @@ class auraCheck():
         
         return disp_frame
 
-    def fromVideo(self, video_file):
+    def fromVideo(self, video_file, filename=''):
         
         cap = cv.VideoCapture(video_file)
-        self.file = dt.now().strftime(f"Data/test_files/{(video_file.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
+        
+        if filename == '':
+            self.file = dt.now().strftime(f"Data/test_files/{(video_file.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
+        else:
+            self.file = filename
+
         state = True
         while cap.isOpened():
             if state:
@@ -353,7 +362,7 @@ class auraCheck():
         cap.release()
         cv.destroyAllWindows()
 
-    def fromPhotos(self,folder="Data/test_photos", vis_comp=False):
+    def fromPhotos(self,folder="Data/test_photos", vis_comp=False, filename=''):
         '''
         Test auroras from a directory
         '''
@@ -363,7 +372,10 @@ class auraCheck():
         photos.sort()
         windowName = "Testing Images"
 
-        self.file = dt.now().strftime(f"Data/test_files/{(folder.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
+        if filename == '':
+            self.file = dt.now().strftime(f"Data/test_files/{(folder.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
+        else:
+            self.file = filename
 
         # image height
         disp_size = 800
@@ -403,11 +415,11 @@ class auraCheck():
             cur = cv.imread(p)
 
             display_img = self.putText(cur)
-            disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
-            cv.imshow(windowName, disp_this)
-            cv.waitKey(1)
 
             if vis_comp:
+                disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
+                cv.imshow(windowName, disp_this)
+                cv.waitKey(1)
                 sOg = stopOrGo()
                 # Check for input
                 if sOg == 'quit':  # Wait 25 ms before next frame
@@ -425,8 +437,9 @@ class auraCheck():
                     continue
             else:
                 pass
-        cv.waitKey(1)
-        cv.destroyAllWindows()
+        if vis_comp:
+            cv.waitKey(1)
+            cv.destroyAllWindows()
         log.info("Windows destroyed")
 
     def fromLive(self, ycam):
@@ -705,4 +718,17 @@ def plotColorComparison(df):
 
 if __name__ == "__main__":
     x = auraCheck()
-            
+    files2check = 'Data/test_photos/leds'
+    
+    for i in ('Regular',['Full_Size', 0], ['Shrunk', 1], ['Small',2]):
+
+        if type(i) == list:
+            x.doKCluster=True
+            x._kSmall = i[1]
+            csv_name = dt.now().strftime(f"{i[0]}_%m-%d_%H.csv")
+        else:
+            x.doKCluster = False
+            csv_name = dt.now().strftime(f"{i[0]}_%m-%d_%H.csv")
+
+        x.fromPhotos(files2check, filename=csv_name)
+        x.__init__()
