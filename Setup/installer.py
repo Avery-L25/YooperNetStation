@@ -12,13 +12,18 @@ full_path = os.path.realpath(__file__)
 rel_dir = os.path.dirname(__file__)
 
 # Project Vars
+def getFromToml(var_id):
+    'Get value from toml file if it exists'
+    pass
+
 PROJECT_NAME="YooperNetStation"
 USERNAME=os.environ['LOGNAME']
 PROJECT_DIR=f"/home/{USERNAME}/{PROJECT_NAME}"
 VENV_NAME="venv"
-VENV_DIR=f"{PROJECT_DIR}/$VENV_NAME"
-GIT_REPO="https://github.com/Avery-L25/$PROJECT_NAME.git"
+VENV_DIR=f"{PROJECT_DIR}/{VENV_NAME}"
+GIT_REPO=f"https://github.com/Avery-L25/{PROJECT_NAME}.git"
 SERVICE_USER="python_service"
+SERVICE_DIR="/etc/systemd/system"
 
 
 # Local Files
@@ -28,14 +33,13 @@ def getRef(fname):
 
 PKG_LIST        =getRef("dependencies.txt")
 PYTHON_REQS     =getRef("requirements.txt")
-SERVICE_DIR     =getRef("NotImplemented")
 SERVICE_FILE    =getRef("yoopernet.service")
 STARTER_SCRIPT  =getRef("startup.sh")                                          #! UPDATE THIS
 DEFAULT_TOML    =getRef("default.toml")
 
 # Conditions
 make_venv = False
-all_check_yes = False
+all_check_yes = False  # If this is true, does every command unless specifically told to skip with seperate condition
 
 # region functions
 #  Run commands from strings
@@ -54,15 +58,17 @@ def stopOrGo(msg='continue', cnt_override=False, pass_override=False):  # -> boo
         # If the continute override is true, return True to continue operation unless marked specifically to pass.
         return True
     while True:
-        usr_in = input(f"Do you wish to {msg}? y or n\n")
+        usr_in = input(f"Do you wish to {msg}? y or n (or e to exit)\n")
         if usr_in.lower() in ['y', 'yes']:
             return True
         elif usr_in.lower() in ['n', 'no']:
             return False
-        else:
+        elif usr_in.lower() in ['e', 'exit']:
             # !This is for testing the operation of the system while developing
             print("Exiting")
             sys.exit()
+        else:
+            print("Not recognized\n")
 
 # Logging/Output functions
 class bcolors():
@@ -160,19 +166,15 @@ if make_venv is True:
         log(f"Virtual Environment \"{VENV_NAME}\" exists, continuing install.")
     else:
         log( f"Creating virtual python environment: \"{VENV_DIR}\"")
-        runStr(f"sudo python -m venv \"{VENV_DIR}\"")
+        runStr(f"python -m venv {VENV_DIR}")
         success(f"Succesfully created {VENV_NAME}")
 
 
 # 3: Install Libraries
 log(f"Installing libaries for YooperNET from {PYTHON_REQS}")
-try:
-    if make_venv is True:
-        # Activate venv if device is using one
-        runStr(f"source {VENV_DIR}/bin/activate")                                   #! Can we do this without ipython for station
-        
+try:        
     # Install the libraries to specified version using the requirements file
-    runStr(f"pip install -r {PYTHON_REQS}")
+    runStr(f"{VENV_DIR}/bin/pip install -r {PYTHON_REQS}")
     success(f"Python requirement successfully installed")
 except subprocess.CalledProcessError as e:
     error(f"Error occurred while attempting to install dependencies."
@@ -183,7 +185,7 @@ success( "Successfully installed python libraries")
 # 4: Copy toml file to directory
 try:
     # Copy toml file
-    runStr(f"copy {DEFAULT_TOML} {PROJECT_DIR}")
+    runStr(f"cp {DEFAULT_TOML} {PROJECT_DIR}")
     success(f"Copied toml file to project directory")
 except subprocess.CalledProcessError as e:
     error(f"Error occurred while attempting to copy toml file."

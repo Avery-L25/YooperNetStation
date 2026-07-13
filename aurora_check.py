@@ -720,7 +720,7 @@ def plotColorComparison(df):
 
 if __name__ == "__main__":
     x = auraCheck()
-    files2check = 'Data/'
+    files2check = 'Data/Videos/20251103_gill_smile-01.mp4'
     
     for i in ('Regular',['Full_Size', 0], ['Shrunk', 1], ['Small',2]):
 

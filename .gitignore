@@ -212,6 +212,8 @@ References/
 camera/
 Token_management/
 .YooperConfig.toml
+Setup/Ref_Files
+
 
 # types of files
 *.rules
