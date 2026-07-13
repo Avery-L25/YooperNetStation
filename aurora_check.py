@@ -303,7 +303,7 @@ class auraCheck():
         
         return disp_frame
 
-    def fromVideo(self, video_file, filename=''):
+    def fromVideo(self, video_file, vis_comp=False, filename=''):
         
         cap = cv.VideoCapture(video_file)
         
@@ -326,29 +326,30 @@ class auraCheck():
                 checked = self.isAurora(frame)
                 log.debug(f"AFTER isAurora is called with frame: {frame.shape}\n"
                         f"and checked : {checked}")
-            
-                if checked:
-                    log.log(DEBUG2,f"checked is {checked}")
-                    mask_mse, mask_norm, color_sum = checked[:]
-                    dr, dg, db = color_sum[:]
-                    aur_txt = (f"MSE from masking: {round(mask_mse,4)} \nNorm from masking"
-                            f": {round(mask_norm,2)}\nRed:{round(dr,3)}\nGreen:{round(dg,3)}\nBlue:{round(db,3)}")
-                else:
-                    aur_txt = "No previous image, wait until next image"
-                
-                txt_offset = cv.getTextSize(aur_txt,cv.FONT_HERSHEY_SIMPLEX,0.5,2)
-                aur_txt = aur_txt.split('\n')
-                x=0
-                disp_frame = frame
-                for i in (aur_txt):
-                    cv.putText(img=disp_frame, text=f"{i}", org=(10, int(disp_frame.shape[1]-15-x*1.25*txt_offset[0][1])),
-                    fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
-                    x=x+1
+
+                if vis_comp is True:
+                    if checked:
+                        log.log(DEBUG2,f"checked is {checked}")
+                        mask_mse, mask_norm, color_sum = checked[:]
+                        dr, dg, db = color_sum[:]
+                        aur_txt = (f"MSE from masking: {round(mask_mse,4)} \nNorm from masking"
+                                f": {round(mask_norm,2)}\nRed:{round(dr,3)}\nGreen:{round(dg,3)}\nBlue:{round(db,3)}")
+                    else:
+                        aur_txt = "No previous image, wait until next image"
+                    
+                    txt_offset = cv.getTextSize(aur_txt,cv.FONT_HERSHEY_SIMPLEX,0.5,2)
+                    aur_txt = aur_txt.split('\n')
+                    x=0
+                    disp_frame = frame
+                    for i in (aur_txt):
+                        cv.putText(img=disp_frame, text=f"{i}", org=(10, int(disp_frame.shape[1]-15-x*1.25*txt_offset[0][1])),
+                        fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
+                        x=x+1
 
 
 
-                gray = cv.cvtColor(disp_frame, cv.COLOR_BGR2GRAY)
-                cv.imshow('frame', disp_frame)
+                    gray = cv.cvtColor(disp_frame, cv.COLOR_BGR2GRAY)
+                    cv.imshow('frame', disp_frame)
 
             key_press = cv.waitKey(1) & 0xFF
             if key_press == ord('q'):
@@ -360,7 +361,8 @@ class auraCheck():
 
 
         cap.release()
-        cv.destroyAllWindows()
+        if vis_comp is True:
+            cv.destroyAllWindows()
 
     def fromPhotos(self,folder="Data/test_photos", vis_comp=False, filename=''):
         '''
@@ -718,7 +720,7 @@ def plotColorComparison(df):
 
 if __name__ == "__main__":
     x = auraCheck()
-    files2check = 'Data/test_photos/LEDS'
+    files2check = 'Data/'
     
     for i in ('Regular',['Full_Size', 0], ['Shrunk', 1], ['Small',2]):
 
@@ -730,5 +732,5 @@ if __name__ == "__main__":
             x.doKCluster = False
             csv_name = dt.now().strftime(f"{i[0]}_%m-%d_%H.csv")
 
-        x.fromPhotos(files2check, filename=csv_name)
+        x.fromVideo(files2check, filename=csv_name)
         x.__init__()
