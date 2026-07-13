@@ -229,3 +229,5 @@ Token_management/
 *.h5
 *.json
 *.env
+*.tar
+*.so*

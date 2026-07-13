@@ -5,8 +5,8 @@ import os.path
 from os.path import isfile, join
 import sys
 
-### Assign paths
-#! Update to be in JSON
+# Get directories and paths
+# Update to be in JSON
 working_dir = os.getcwd()
 full_path = os.path.realpath(__file__)
 rel_dir = os.path.dirname(__file__)
@@ -24,7 +24,7 @@ SERVICE_USER="python_service"
 # Local Files
 def getRef(fname):
     'Make path file that will be referenced or moved'
-    return os.path.join(rel_dir,fname)
+    return os.path.join(rel_dir,'Ref_Files', fname)                          #! Update if layout changes
 
 PKG_LIST        =getRef("dependencies.txt")
 PYTHON_REQS     =getRef("requirements.txt")

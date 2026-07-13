@@ -718,7 +718,7 @@ def plotColorComparison(df):
 
 if __name__ == "__main__":
     x = auraCheck()
-    files2check = 'Data/test_photos/leds'
+    files2check = 'Data/test_photos/LEDS'
     
     for i in ('Regular',['Full_Size', 0], ['Shrunk', 1], ['Small',2]):
 

@@ -38,3 +38,11 @@ Sensor_Data_Format  ="%Y-%m-%d_Sensor_Data"
 Image_Extension     =".png"
 
 [passkeys]
+
+[install]
+PROJECT_NAME="YooperNetStation"
+USERNAME=""
+PROJECT_DIR=f"/home/{USERNAME}/{PROJECT_NAME}"
+VENV_NAME="venv"
+VENV_DIR=f"{PROJECT_DIR}/$VENV_NAME"
+GIT_REPO="https://github.com/Avery-L25/YooperNetStation.git"
