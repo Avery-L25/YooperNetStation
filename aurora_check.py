@@ -72,22 +72,25 @@ class auraCheck():
         try:
             preDict = self._testingPre[k]
         except KeyError:
-            preDict = {'img0':'','img1':'','img2':''}
+            preDict = {'img0':None,'img1':None,'img2':None}
 
         if v['doKCluster'] is True:
             self._kSmall = 0
 
             # Full size klustered image
             img0 = self.kClust(img)
+            log.debug(f"isAurora on img0 test {k} with params {v} \n\n\n")
             x = self.isAurora(img0, preDict['img0'])
 
             # Shrunk klustered images
             img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
+            log.debug(f"isAurora on img1 test {k} with params {v} \n\n\n")           
             x = self.isAurora(img1, preDict['img1'])
 
             # Small klustered image
             self._kSmall = 2
             img2 = self.kClust(img)
+            log.debug(f"isAurora on img2 test {k} with params {v} \n\n\n")
             x = self.isAurora(img2, preDict['img2'])
 
             # Update previous images
@@ -95,6 +98,7 @@ class auraCheck():
             self._testingPre[k] = preDict
         else:
             # Do a standard test
+            log.debug(f"isAurora on default image test {k} with params {v} \n\n\n")
             x = self.isAurora(img)
 
 
@@ -168,6 +172,7 @@ class auraCheck():
         if self.pre is None and prev == '':
             # If there is no previous image  AND  a no reference image
             # Assign given image
+            log.info(f"self.pre is being set to {image}")
             self.pre = image
             self.img = image
             log.debug("pre is check to be None")
@@ -178,10 +183,14 @@ class auraCheck():
             # If there is a previous image  AND  no reference image
             # Set the old image as the previous and updates the current for next time
             log.debug("pre has been assigned and no reference image was provided")
+
+            log.info(f"self.pre is being set to {self.img}")
             self.pre = self.img
             pre = self.pre
             self.img = img
-        elif prev != '':
+        elif prev is None:
+            return None
+        elif prev != '' and prev is not None:
             # If a reference image is provided, use it for the test instead
             # Added for klustering without multiple runs
             pre = prev
@@ -190,7 +199,7 @@ class auraCheck():
             log.error(f"Situation unknown reference image \'prev\' = {prev}"
                       f"\nself.pre = {self.pre}"
                       f"\nself.img = {self.img}")
-        
+
         # Kluster the image if true
         if self.doKCluster is True:
             img = self.kClust(image, Display=False)
@@ -236,6 +245,9 @@ class auraCheck():
             inverseNeutral = cv.bitwise_not(neutralMask)  # Mask for areas that do not have similar rgb values
             verygreen = cv.bitwise_and(maskgreendominant, inverseNeutral)  #* This shows only the areas where green is dominant over blue or red AND rgb is not similar
 
+            if img.shape != verygreen.shape:
+                log.critical(f"img and mask \'verygreen\' shape do not match\n"
+                             f"img shape = {img.shape} and maske shape = {verygreen.shape}")
             # Apply masks and get images
             masked_img = cv.bitwise_and(img, img, mask=verygreen)  # Display the image only whre the verygreen mask values are
             masked_pre = cv.bitwise_and(pre, pre, mask=verygreen)
