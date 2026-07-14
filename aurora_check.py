@@ -166,22 +166,30 @@ class auraCheck():
 
         # If there is no previous image, set current image as previous
         if self.pre is None and prev == '':
-            # If there is no previous image set image to previous and return nothing
+            # If there is no previous image  AND  a no reference image
+            # Assign given image
             self.pre = image
             self.img = image
             log.debug("pre is check to be None")
             log.debug(f"self.pre = [{self.pre}] and self.img = [{self.img}]")
             return None
             log.debug(f"after the return None")
-        elif prev != '':
-            # If a previous image is provided, use it for the test instead
-            # Added for klustering without multiple runs
-            pre = prev
-        else:
+        elif self.pre is not None and prev == '':
+            # If there is a previous image  AND  no reference image
             # Set the old image as the previous and updates the current for next time
+            log.debug("pre has been assigned and no reference image was provided")
             self.pre = self.img
             pre = self.pre
             self.img = img
+        elif prev != '':
+            # If a reference image is provided, use it for the test instead
+            # Added for klustering without multiple runs
+            pre = prev
+        else:
+            # If unknown situation, quit
+            log.error(f"Situation unknown reference image \'prev\' = {prev}"
+                      f"\nself.pre = {self.pre}"
+                      f"\nself.img = {self.img}")
         
         # Kluster the image if true
         if self.doKCluster is True:
