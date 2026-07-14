@@ -36,6 +36,7 @@ class auraCheck():
     def __init__(self, *args, **kwargs) -> None:
         self.img    = None
         self.pre    = None
+        self._testingPre = {}
         self.masked = None
         self.premask= None
         self.file = None # dt.now().strftime("Data/test_files/check_data_%Y-%m-%d_%H-%M-%S.csv")
@@ -66,22 +67,32 @@ class auraCheck():
         self.auraDict['Test Name'] = k
         self.auraDict['K Vakue'] = v['_kValue']
         self._kValue = v['_kValue']
+        
+        # Attempt to get previous images, otherwise write as empty
+        try:
+            preDict = self._testingPre[k]
+        except KeyError:
+            preDict = {'img0':'','img1':'','img2':''}
 
-        if v['doKluster'] is True:
+        if v['doKCluster'] is True:
             self._kSmall = 0
 
             # Full size klustered image
             img0 = self.kClust(img)
-            x = self.isAurora(img0)
+            x = self.isAurora(img0, preDict['img0'])
 
             # Shrunk klustered images
             img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
-            x = self.isAurora(img1)
+            x = self.isAurora(img1, preDict['img1'])
 
             # Small klustered image
             self._kSmall = 2
             img2 = self.kClust(img)
-            x = self.isAurora(img2)
+            x = self.isAurora(img2, preDict['img2'])
+
+            # Update previous images
+            preDict = {'img0':img0,'img1':img1,'img2':img2}
+            self._testingPre[k] = preDict
         else:
             # Do a standard test
             x = self.isAurora(img)
