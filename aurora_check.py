@@ -23,7 +23,7 @@ logging.addLevelName(DEBUG2,"DEBUG2")
 logging.addLevelName(DATA,"DATA")
 
 log = logging.getLogger("auraCheck")
-log.setLevel(level=30)
+log.setLevel(level=10)
 
 data_log = logging.getLogger("writeData")
 data_1 = logging.FileHandler("data.log")
@@ -62,6 +62,31 @@ class auraCheck():
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
 
+    def runTest(self, img, k, v):    
+        self.auraDict['Test Name'] = k
+        self.auraDict['K Vakue'] = v['_kValue']
+        self._kValue = v['_kValue']
+
+        if v['doKluster'] is True:
+            self._kSmall = 0
+
+            # Full size klustered image
+            img0 = self.kClust(img)
+            x = self.isAurora(img0)
+
+            # Shrunk klustered images
+            img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
+            x = self.isAurora(img1)
+
+            # Small klustered image
+            self._kSmall = 2
+            img2 = self.kClust(img)
+            x = self.isAurora(img2)
+        else:
+            # Do a standard test
+            x = self.isAurora(img)
+
+
     def doTests(self, image):
         '''
         Method to efficiently perform multiple analysis on the same data
@@ -77,39 +102,16 @@ class auraCheck():
         self.doKCluster = False 
 
         # Function to run a single test
-        def runTest(self, img, k, v):    
-            self.auraDict['Test Name'] = k
-            self.auraDict['K Vakue'] = v['_kValue']
-            self._kValue = v['_kValue']
-
-            if v['doKluster'] is True:
-                self._kSmall = 0
-
-                # Full size klustered image
-                img0 = self.kClust(img)
-                x = self.isAurora(img0)
-
-                # Shrunk klustered images
-                img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
-                x = self.isAurora(img1)
-
-                # Small klustered image
-                self._kSmall = 2
-                img2 = self.kClust(img)
-                x = self.isAurora(img2)
-            else:
-                # Do a standard test
-                x = self.isAurora(img)
-
+        
         if self._doMultiProc is True:
             # Create a pool of workers to process the tests
             p = Pool(len(tests.items()))
 
             items = []
             for key, val in tests.items():
-                items.append((self, image, key, val))
+                items.append((image, key, val))
             
-            p.starmap(runTest, items)
+            p.starmap(self.runTest, items)
             
             # Make Process for each part of a test instead
             # p1 = Process(target=tester1, args=(stop_event,))
@@ -126,7 +128,7 @@ class auraCheck():
         else:
             # Do each test, saving a large kluster rep
             for key, val in tests.items():
-                runTest(self, image, key, val)
+                self.runTest(image, key, val)
 
         return None
 
@@ -829,7 +831,7 @@ if __name__ == "__main__":
     x = auraCheck()
     
     # File to analyze
-    files2check = 'Data/Videos/20251103_gill_smile-01.mp4'
+    files2check = 'video_name.mp4'
     
     # Tests to do
     x.tests['No Clustering'] = {'doKCluster':False,'_kValue':0}
