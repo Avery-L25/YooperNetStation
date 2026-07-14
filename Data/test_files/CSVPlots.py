@@ -58,20 +58,23 @@ def splitDF(dfz) -> dict[str, pd.DataFrame]:
         pass
     return data
 
-def checkDF(DF,dataz) -> pd.DataFrame:
+def checkDF(DF, dataz: dict[str, pd.DataFrame]) -> pd.DataFrame:
     global df, data, plotting_data
     if type(DF) is pd.DataFrame:
         plotting_data = DF 
     elif type(DF) is list:
-        Df2 = []
-        for k in DF:
-            if type(k) is pd.DataFrame:
-                Df2.append(k)
-            elif type(k) is str:
-                
-                print(k)
-                Df2.append(dataz[k])
-        plotting_data = pd.concat(Df2, ignore_index=True)
+        try:
+            Df2 = []
+            for k in DF:
+                if type(k) is pd.DataFrame:
+                    Df2.append(k)
+                elif type(k) is str:
+                    
+                    print(k)
+                    Df2.append(dataz[k])
+            plotting_data = pd.concat(Df2, ignore_index=True)
+        except KeyError:
+            plotting_data = dataz['df']
     return plotting_data
                 
 
@@ -261,9 +264,11 @@ def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle
 
 dfs = {}
 local_path = os.path.dirname(__file__)
-for i in os.listdir():
-    if '07-10' in i:
-        csv_path = os.path.join(local_path,i)
+path_to_check = '/home/amland/mnt/g/My Drive/testing/video'
+abs_dir = path_to_check.rpartition('/')[0]
+for i in os.listdir(path_to_check):
+    if '.csv' in i:
+        csv_path = os.path.join(path_to_check,i)
         df2add = getDF(csv_path)
         print(csv_path)
         dfs[i.partition('_')[0]] = df2add
@@ -278,11 +283,12 @@ fig, ax = plt.subplots(1, sharex=True,sharey=False)
 
 # Plot data for each item
 test = 'Test_es24_ei55'
+inc_linew = 1
+line_style = ['solid', (0, (5, 5)), (5, (10, 3)), (0, (1, 5))]
 for k, v in dfs.items():
     
     vdata = splitDF(v)
-    
-    plot = checkDF(['Dark', test],vdata)
+    plot = checkDF(['Dark', test], vdata)
     # Edit figure
     fig.subplots_adjust(top=0.95,
                         bottom=0.05,
@@ -294,10 +300,12 @@ for k, v in dfs.items():
     
 
     # write data to plots side by side plots
-    ax.plot( plot['mask_mse'],label=f"{k}: {['mask_mse']}",linewidth=1, linestyle='solid')
+    ax.plot( plot['mask_norm'],label=f"{k}: {['mask_mse']}",linewidth=1, linestyle=line_style[inc_linew-1])
     # ax0.plot( v['Red'],     linewidth=1, linestyle='solid')
     # ax0.plot( v['Green'],   linewidth=1, linestyle='dashed')
     # ax0.plot( v['Blue'],    linewidth=2, linestyle='dotted')
+
+    inc_linew = inc_linew + 1
 
 ax.legend()
 fig.suptitle(test, fontsize=16)

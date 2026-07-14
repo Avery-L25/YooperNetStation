@@ -9,7 +9,7 @@ from time import sleep, time
 from datetime import datetime as dt
 import shutil
 import logging
-
+from multiprocessing import Process, Pool
 
 import matplotlib.pyplot as plt; plt.ion()
 import pandas as pd
@@ -47,6 +47,9 @@ class auraCheck():
         self._kValue = 4
         self._kSmall = 0  # 0==Reg, 1==Reg->Shrink, 2==Small
         
+        self.tests = {'No Clustering':{'doKCluster':False,'_kValue':0}}
+        self.auraDict['Test Name'] = 'No Clustering'
+        self._doMultiProc = True
         pass
 
 
@@ -59,7 +62,75 @@ class auraCheck():
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
 
-    def isAurora(self, img):
+    def doTests(self, image):
+        '''
+        Method to efficiently perform multiple analysis on the same data
+        a test follows the format {'No Clustering':{'doKCluster':False,'_kValue':0}}
+        '''
+        tests = self.tests
+        
+        # Incase used without doing tests
+        if tests is None:
+            return self.isAurora(image)
+        
+        # Kclustering is handled in this test instead
+        self.doKCluster = False 
+
+        # Function to run a single test
+        def runTest(self, img, k, v):    
+            self.auraDict['Test Name'] = k
+            self.auraDict['K Vakue'] = v['_kValue']
+            self._kValue = v['_kValue']
+
+            if v['doKluster'] is True:
+                self._kSmall = 0
+
+                # Full size klustered image
+                img0 = self.kClust(img)
+                x = self.isAurora(img0)
+
+                # Shrunk klustered images
+                img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
+                x = self.isAurora(img1)
+
+                # Small klustered image
+                self._kSmall = 2
+                img2 = self.kClust(img)
+                x = self.isAurora(img2)
+            else:
+                # Do a standard test
+                x = self.isAurora(img)
+
+        if self._doMultiProc is True:
+            # Create a pool of workers to process the tests
+            p = Pool(len(tests.items()))
+
+            items = []
+            for key, val in tests.items():
+                items.append((self, image, key, val))
+            
+            p.starmap(runTest, items)
+            
+            # Make Process for each part of a test instead
+            # p1 = Process(target=tester1, args=(stop_event,))
+            # p2 = Process(target=tester2, args=(stop_event,))
+            # p1.start()
+            # p2.start()
+            # while __name__ == "__main__":
+            #     time.sleep(10)
+            #     print('slept 10 sec')
+            # stop_event.wait(10)
+            # stop_event.set()
+            # p1.join()
+            # p2.join()
+        else:
+            # Do each test, saving a large kluster rep
+            for key, val in tests.items():
+                runTest(self, image, key, val)
+
+        return None
+
+    def isAurora(self, image, prev = ''):
         '''
         Check most images against previous for bright, green/blue areas and
         returns a flag (bool) if detected.
@@ -73,39 +144,36 @@ class auraCheck():
         TODO: Fix pre-image assignment. We want to be able 
         '''
         start_proc = dt.now()  # Get start of processing time
+       
         # Ensure there is an image to work with
-        if img is None:
+        if image is None:
             log.warning("Image not provided, cannot check for aurora")
         
-        if self.doKCluster is True:
-            img = self.kClust(img, Display=False)
+        img = image
 
         # If there is no previous image, set current image as previous
-        log.debug("before checking if there is a previous image")
-        if self.pre is None:
-            self.pre = img
-            self.img = img
+        if self.pre is None and prev == '':
+            # If there is no previous image set image to previous and return nothing
+            self.pre = image
+            self.img = image
             log.debug("pre is check to be None")
             log.debug(f"self.pre = [{self.pre}] and self.img = [{self.img}]")
             return None
             log.debug(f"after the return None")
-        log.debug("after the pre image is checked")
-        log.debug(f"1.\nimg = {img.shape}\n"
-                  f"self.pre = {self.pre.shape}\n"
-                  f"self.img = {self.img}")
-
-        self.pre = self.img
-        log.debug(f"2.\nimg = {img.shape}\n"
-                  f"self.pre = {self.pre.shape}\n"
-                  f"self.img = {self.img}")
-        pre = self.pre
-        log.debug(f"3.\nimg = {img.shape}\n"
-                  f"self.pre = {self.pre.shape}\n"
-                  f"self.img = {self.img}")
-        self.img = img
-        log.debug(f"4.\nimg = {img.shape}\n"
-                  f"self.pre = {self.pre.shape}\n"
-                  f"self.img = {self.img}")
+        elif prev != '':
+            # If a previous image is provided, use it for the test instead
+            # Added for klustering without multiple runs
+            pre = prev
+        else:
+            # Set the old image as the previous and updates the current for next time
+            self.pre = self.img
+            pre = self.pre
+            self.img = img
+        
+        # Kluster the image if true
+        if self.doKCluster is True:
+            img = self.kClust(image, Display=False)
+        
         ### get rgb components as floats
 
         b, g, r = cv.split(img)
@@ -303,18 +371,29 @@ class auraCheck():
         
         return disp_frame
 
-    def fromVideo(self, video_file, vis_comp=False, filename=''):
+    def fromVideo(self, video_file, efficient_testing=False, vis_comp=False, filename=''):
+        '''
+        Reads a video files to analyze frame-by-frame.
         
+        '''
+        # Read the video file
         cap = cv.VideoCapture(video_file)
-        
+        vcd = {}
+        vcd['Time(ms)'] = cv.CAP_PROP_POS_MSEC
+        vcd['Time(frames)'] = cv.CAP_PROP_POS_FRAMES
+
+        # Ensure there is a file to save data too
         if filename == '':
+            # If no file name provided, generate generic filename with date
             self.file = dt.now().strftime(f"Data/test_files/{(video_file.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
         else:
             self.file = filename
 
+        # Begin frame by frame analysis
         state = True
         while cap.isOpened():
             if state:
+                # Get next frame
                 ret, frame = cap.read()
 
                 # if frame is read correctly ret is True
@@ -322,12 +401,25 @@ class auraCheck():
                     print("Can't receive frame (stream end?). Exiting ...")
                     break
                 
-                log.debug(f"before isAurora is called with frame: {frame.shape}")
-                checked = self.isAurora(frame)
-                log.debug(f"AFTER isAurora is called with frame: {frame.shape}\n"
-                        f"and checked : {checked}")
+                # Get video properties
+                self.auraDict['Time(ms)']     = cap.get(cv.CAP_PROP_POS_MSEC)
+                self.auraDict['Time(frames)'] = cap.get(cv.CAP_PROP_POS_FRAMES)
 
+                # Determine checking method
+                if efficient_testing is True:
+                    log.info("Do multiple tests in single run")
+                    self.doTests(frame)
+                else:
+                    # If we do not have multiple tests check aurora directly
+                    log.debug(f"before isAurora is called with frame: {frame.shape}")
+                    checked = self.isAurora(frame)
+                    log.debug(f"AFTER isAurora is called with frame: {frame.shape}\n"
+                            f"and checked : {checked}")
+
+                # should the image be display
                 if vis_comp is True:
+                    
+                    # Check image
                     if checked:
                         log.log(DEBUG2,f"checked is {checked}")
                         mask_mse, mask_norm, color_sum = checked[:]
@@ -351,39 +443,47 @@ class auraCheck():
                     gray = cv.cvtColor(disp_frame, cv.COLOR_BGR2GRAY)
                     cv.imshow('frame', disp_frame)
 
-            key_press = cv.waitKey(1) & 0xFF
-            if key_press == ord('q'):
-                log.info(f"Frame shape: {disp_frame.shape}")
+                    key_press = cv.waitKey(1) & 0xFF
+                    if key_press == ord('q'):
+                        log.info(f"Frame shape: {disp_frame.shape}")
 
-                break
-            elif key_press == ord(' '): 
-                state = not state  # [space] for pause
+                        break
+                    elif key_press == ord(' '): 
+                        state = not state  # [space] for pause
 
 
+        # Stop video after loop
         cap.release()
         if vis_comp is True:
+            # Close the window if it is being diplayed
             cv.destroyAllWindows()
 
-    def fromPhotos(self,folder="Data/test_photos", vis_comp=False, filename=''):
+    def fromPhotos(self, folder="Data/test_photos", efficient_testing=False, vis_comp=False, filename=''):
         '''
-        Test auroras from a directory
+        Test auroras from a series of photos given a directory.
         '''
         log.debug(f"starting the \'fromPhotos\' method with folder={folder}")
         
+        # Get a list of photos from the directory
         photos = self.dir2files(folder)
         photos.sort()
-        windowName = "Testing Images"
+        num_photos = len(photos)
+        log.info(f"there is {num_photos}")
+        
 
+        # Ensure there is a file to write data too
         if filename == '':
             self.file = dt.now().strftime(f"Data/test_files/{(folder.split('/')[-1]).split('.')[0]}_%m-%d_%H.csv")
         else:
             self.file = filename
 
-        # image height
+        # Prepare display params
         disp_size = 800
         border_width = 40 
+        windowName = "Testing Images"
 
         def makeImage(img):
+            'Create a display to show current and previous images'
             scale = img.shape[1]/img.shape[0]
             width = scale*disp_size
             pos1 = (border_width, border_width)
@@ -401,9 +501,9 @@ class auraCheck():
                 if key_press == ord(' '): return 'next' # [space] for pause
                 if key_press == ord('s'): return 'save' # [space] for pause
 
-        num_photos = len(photos)
-        log.info(f"there is {num_photos}")
+        # Analyze photos in a sequence
         for p in photos:
+
             log.info(f"This is photo {p}\n there are {num_photos} left")
             num_photos = num_photos - 1
             self.auraDict['photo'] = p.rpartition('/')[2]
@@ -412,13 +512,15 @@ class auraCheck():
                 # photos.remove(p)
                 log.warning("Was not photo, skipping\n\n")
                 continue
-            # go in order  somehow.
-            # photo = f"{folder}{p}"
+
             cur = cv.imread(p)
 
-            display_img = self.putText(cur)
-
-            if vis_comp:
+            if efficient_testing is True:
+                log.info("Do multiple tests in single run")
+                self.doTests(cur)
+            elif vis_comp:
+                # put text on image after a test
+                display_img = self.putText(cur)
                 disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
                 cv.imshow(windowName, disp_this)
                 cv.waitKey(1)
@@ -438,12 +540,17 @@ class auraCheck():
                     log.info("Moving to next photo\n\n\n")
                     continue
             else:
-                pass
+                # If we do not have multiple tests check aurora directly without displaying
+                log.debug(f"before isAurora is called with frame: {cur.shape}")
+                checked = self.isAurora(cur)
+                log.debug(f"AFTER isAurora is called with frame: {cur.shape}\n"
+                        f"and checked : {checked}")
+        
         if vis_comp:
             cv.waitKey(1)
             cv.destroyAllWindows()
-        log.info("Windows destroyed")
-
+            log.info("Windows destroyed")
+        
     def fromLive(self, ycam):
         '''
         Test auroras from a directory
@@ -720,17 +827,19 @@ def plotColorComparison(df):
 
 if __name__ == "__main__":
     x = auraCheck()
+    
+    # File to analyze
     files2check = 'Data/Videos/20251103_gill_smile-01.mp4'
     
-    for i in ('Regular',['Full_Size', 0], ['Shrunk', 1], ['Small',2]):
+    # Tests to do
+    x.tests['No Clustering'] = {'doKCluster':False,'_kValue':0}
+    x.tests['Kluster 2']     = {'doKCluster':True ,'_kValue':2}
+    x.tests['Kluster 3']     = {'doKCluster':True ,'_kValue':3}
+    x.tests['Kluster 4']     = {'doKCluster':True ,'_kValue':4}
+    x.tests['Kluster 6']     = {'doKCluster':True ,'_kValue':6}
+    x.tests['Kluster 8']     = {'doKCluster':True ,'_kValue':8}
+    x.tests['Kluster 10']    = {'doKCluster':True ,'_kValue':10}
 
-        if type(i) == list:
-            x.doKCluster=True
-            x._kSmall = i[1]
-            csv_name = dt.now().strftime(f"{i[0]}_%m-%d_%H.csv")
-        else:
-            x.doKCluster = False
-            csv_name = dt.now().strftime(f"{i[0]}_%m-%d_%H.csv")
-
-        x.fromVideo(files2check, filename=csv_name)
-        x.__init__()
+    
+    x.fromVideo(video_file=files2check, efficient_testing=True,
+                filename=dt.now().strftime(f"Nov3_25_gill_%m-%d_%H.csv"))
