@@ -63,10 +63,28 @@ class auraCheck():
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
 
-    def runTest(self, img, k, v):    
-        self.auraDict['Test Name'] = k
-        self.auraDict['K Vakue'] = v['_kValue']
+    def runTest(self, img, k, v):
+        '''
+        Test a k value for clustering of an image using aurora detection.
+        Will test at original image size, shrinking after clustering, and small.
+
+        Parameters
+        ----------
+        img : numpy array
+            The working image/frame to be checked against.
+        k : str
+            The key from the testing dictionary, should be the name of the
+            current test.        
+        v : str
+            The values from the testing dictionary, should contain any testing
+            parameters.
+        '''    
+        
+        curTestDict = self.auraDict.copy()
+        curTestDict['Test Name'] = k
+        curTestDict['K Vakue'] = v['_kValue']
         self._kValue = v['_kValue']
+        
         
         # Attempt to get previous images, otherwise write as empty
         try:
@@ -80,18 +98,18 @@ class auraCheck():
             # Full size klustered image
             img0 = self.kClust(img)
             log.debug(f"isAurora on img0 test {k} with params {v} \n\n\n")
-            x = self.isAurora(img0, preDict['img0'])
+            x = self.isAurora(img0, curTestDict.copy(), preDict['img0'])
 
             # Shrunk klustered images
             img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
             log.debug(f"isAurora on img1 test {k} with params {v} \n\n\n")           
-            x = self.isAurora(img1, preDict['img1'])
+            x = self.isAurora(img1, curTestDict.copy(), preDict['img1'])
 
             # Small klustered image
             self._kSmall = 2
             img2 = self.kClust(img)
             log.debug(f"isAurora on img2 test {k} with params {v} \n\n\n")
-            x = self.isAurora(img2, preDict['img2'])
+            x = self.isAurora(img2, curTestDict.copy(), preDict['img2'])
 
             # Update previous images
             preDict = {'img0':img0,'img1':img1,'img2':img2}
@@ -101,11 +119,19 @@ class auraCheck():
             log.debug(f"isAurora on default image test {k} with params {v} \n\n\n")
             x = self.isAurora(img)
 
-
     def doTests(self, image):
         '''
-        Method to efficiently perform multiple analysis on the same data
-        a test follows the format {'No Clustering':{'doKCluster':False,'_kValue':0}}
+        Method to efficiently perform multiple analysis on the same data.
+        Works through the tests defined by aura.tests.
+        
+        The tests are held in a dictionary with the format
+        aura.tests['No Clustering']  = {'doKCluster':False,'_kValue':0}}
+
+        Parameters
+        ----------
+        image : numpy array
+            The working image/frame to be checked against.
+       
         '''
         tests = self.tests
         
@@ -128,6 +154,8 @@ class auraCheck():
             
             p.starmap(self.runTest, items)
             
+            p.close()
+            p.join()
             # Make Process for each part of a test instead
             # p1 = Process(target=tester1, args=(stop_event,))
             # p2 = Process(target=tester2, args=(stop_event,))
@@ -147,7 +175,7 @@ class auraCheck():
 
         return None
 
-    def isAurora(self, image, prev = ''):
+    def isAurora(self, image, dictW = None, prev = ''):
         '''
         Check most images against previous for bright, green/blue areas and
         returns a flag (bool) if detected.
@@ -161,15 +189,22 @@ class auraCheck():
         TODO: Fix pre-image assignment. We want to be able 
         '''
         start_proc = dt.now()  # Get start of processing time
-       
+        log.info("Starting to check for aurora")
         # Ensure there is an image to work with
         if image is None:
             log.warning("Image not provided, cannot check for aurora")
         
         img = image
 
+        # Initialize dict to write
+        if type(dictW) is None:
+            dictW = self.auraDict
+        elif type(dictW) is not dict:
+            log.warning(f"Dictionary passed to \'isAurora\' is type:{type(dictW)}")
+            raise(TypeError)
+
         # If there is no previous image, set current image as previous
-        if self.pre is None and prev == '':
+        if self.pre is None and type(prev) is str:
             # If there is no previous image  AND  a no reference image
             # Assign given image
             log.info(f"self.pre is being set to {image}")
@@ -179,7 +214,7 @@ class auraCheck():
             log.debug(f"self.pre = [{self.pre}] and self.img = [{self.img}]")
             return None
             log.debug(f"after the return None")
-        elif self.pre is not None and prev == '':
+        elif self.pre is not None and type(prev) is str:
             # If there is a previous image  AND  no reference image
             # Set the old image as the previous and updates the current for next time
             log.debug("pre has been assigned and no reference image was provided")
@@ -190,7 +225,7 @@ class auraCheck():
             self.img = img
         elif prev is None:
             return None
-        elif prev != '' and prev is not None:
+        elif type(prev) is np.ndarray:
             # If a reference image is provided, use it for the test instead
             # Added for klustering without multiple runs
             pre = prev
@@ -211,9 +246,9 @@ class auraCheck():
         g1 = g * 1.0
         b1 = b * 1.0
 
-        self.auraDict['Blue']   = b.sum()/b.size
-        self.auraDict['Green']  = g.sum()/b.size
-        self.auraDict['Red']    = r.sum()/b.size
+        dictW['Blue']   = b.sum()/b.size
+        dictW['Green']  = g.sum()/b.size
+        dictW['Red']    = r.sum()/b.size
 
         b_p, g_p, r_p = cv.split(pre)
         r1_p = r_p * 1.0
@@ -260,8 +295,8 @@ class auraCheck():
             mask_img_diff = masked_img - masked_pre
             norm_of_diff = np.linalg.norm(mask_img_diff)  # Returns the normal vector
             mse = float(np.mean(mask_img_diff**2))  # Use a threshold instead?
-            self.auraDict['mask_mse'] = mse
-            self.auraDict['mask_norm'] = norm_of_diff
+            dictW['mask_mse'] = mse
+            dictW['mask_norm'] = norm_of_diff
             return norm_of_diff, mse
 
         def netColorCheck():
@@ -277,12 +312,12 @@ class auraCheck():
             r2b = dr/db
             g2b = dg/db
             color_sums = [dr, dg, db]
-            self.auraDict['dRed'] = dr
-            self.auraDict['dGreen'] = dg
-            self.auraDict['dBlue'] = db
-            self.auraDict['d_red2blue'] = r2b
-            self.auraDict['d_green2blue'] = g2b
-            self.auraDict['d_green2red'] = dg/dr
+            dictW['dRed'] = dr
+            dictW['dGreen'] = dg
+            dictW['dBlue'] = db
+            dictW['d_red2blue'] = r2b
+            dictW['d_green2blue'] = g2b
+            dictW['d_green2red'] = dg/dr
 
             return color_sums
 
@@ -298,11 +333,12 @@ class auraCheck():
         finish_proc = dt.now()  # Get end of processing
         proc_time = finish_proc - start_proc
         log.info(f"Processing tooking {proc_time}")
-        self.auraDict['Processing Time'] = proc_time
+        dictW['Processing Time'] = proc_time
 
         # Write info to csv
         if self._fileHasHeader is False: self.startCSV(self.auraDict)
         self.write2CSV(self.auraDict)
+        log.info(f"finished checking for aurora")
 
         return (mask_mse, mask_norm, color_sums)
 
@@ -361,6 +397,7 @@ class auraCheck():
         return res2
 
     def write2CSV(self, dicty):
+        log.info("writing to csv")
         with open(self.file, 'a', newline='') as cfile:
             cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
             cwrite.writerow(dicty)
@@ -414,7 +451,7 @@ class auraCheck():
         vcd = {}
         vcd['Time(ms)'] = cv.CAP_PROP_POS_MSEC
         vcd['Time(frames)'] = cv.CAP_PROP_POS_FRAMES
-
+        total_frames  = cap.get(cv.CAP_PROP_FRAME_COUNT)
         # Ensure there is a file to save data too
         if filename == '':
             # If no file name provided, generate generic filename with date
@@ -433,7 +470,9 @@ class auraCheck():
                 if not ret:
                     print("Can't receive frame (stream end?). Exiting ...")
                     break
-                
+                else:
+                    cur_frame = cap.get(cv.CAP_PROP_POS_FRAMES)
+                    log.info(f"On frame {cur_frame} of {total_frames}")
                 # Get video properties
                 self.auraDict['Time(ms)']     = cap.get(cv.CAP_PROP_POS_MSEC)
                 self.auraDict['Time(frames)'] = cap.get(cv.CAP_PROP_POS_FRAMES)
