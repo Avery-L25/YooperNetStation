@@ -18,8 +18,11 @@ from YooperCam import YooperCam
 
 logging.basicConfig()
 DEBUG2 = 11
+HIGH_DEBUG = 24
 DATA = 28
+
 logging.addLevelName(DEBUG2,"DEBUG2")
+logging.addLevelName(HIGH_DEBUG,"HIGH_DEBUG")
 logging.addLevelName(DATA,"DATA")
 
 log = logging.getLogger("auraCheck")
@@ -80,6 +83,7 @@ class auraCheck():
             parameters.
         '''    
         
+        log.log(DATA,f"Running test {k} with params {v}\n\n\n")
         curTestDict = self.auraDict.copy()
         curTestDict['Test Name'] = k
         curTestDict['K Vakue'] = v['_kValue']
@@ -189,7 +193,8 @@ class auraCheck():
         TODO: Fix pre-image assignment. We want to be able 
         '''
         start_proc = dt.now()  # Get start of processing time
-        log.info("Starting to check for aurora")
+        log.log(HIGH_DEBUG,"Starting to check for aurora")
+        
         # Ensure there is an image to work with
         if image is None:
             log.warning("Image not provided, cannot check for aurora")
@@ -197,7 +202,7 @@ class auraCheck():
         img = image
 
         # Initialize dict to write
-        if type(dictW) is None:
+        if dictW is None:
             dictW = self.auraDict
         elif type(dictW) is not dict:
             log.warning(f"Dictionary passed to \'isAurora\' is type:{type(dictW)}")
@@ -337,6 +342,11 @@ class auraCheck():
 
         # Write info to csv
         if self._fileHasHeader is False: self.startCSV(self.auraDict)
+        try:
+            log.log(HIGH_DEBUG,f"Calling to write {dictW['Test Name']}")
+        except NameError:
+            log.critical("There is no test name in passed dictionary.")
+            raise NameError
         self.write2CSV(self.auraDict)
         log.info(f"finished checking for aurora")
 
@@ -397,7 +407,7 @@ class auraCheck():
         return res2
 
     def write2CSV(self, dicty):
-        log.info("writing to csv")
+        log.log(HIGH_DEBUG,"writing to csv")
         with open(self.file, 'a', newline='') as cfile:
             cwrite = csv.DictWriter(cfile,fieldnames=dicty.keys())
             cwrite.writerow(dicty)
@@ -461,6 +471,7 @@ class auraCheck():
 
         # Begin frame by frame analysis
         state = True
+        log.log(HIGH_DEBUG,f"Video Capture status before: {cap.isOpened()}")
         while cap.isOpened():
             if state:
                 # Get next frame
@@ -472,7 +483,7 @@ class auraCheck():
                     break
                 else:
                     cur_frame = cap.get(cv.CAP_PROP_POS_FRAMES)
-                    log.info(f"On frame {cur_frame} of {total_frames}")
+                    log.log(DATA,f"On frame {cur_frame} of {total_frames}")
                 # Get video properties
                 self.auraDict['Time(ms)']     = cap.get(cv.CAP_PROP_POS_MSEC)
                 self.auraDict['Time(frames)'] = cap.get(cv.CAP_PROP_POS_FRAMES)
@@ -576,7 +587,7 @@ class auraCheck():
         # Analyze photos in a sequence
         for p in photos:
 
-            log.info(f"This is photo {p}\n there are {num_photos} left")
+            log.log(DATA,f"This is photo {p} there are {num_photos} left.\n\n\n")
             num_photos = num_photos - 1
             self.auraDict['photo'] = p.rpartition('/')[2]
             self.auraDict['folder'] = p.split('/')[-2]
