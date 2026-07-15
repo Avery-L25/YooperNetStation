@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+'''
+Methods for determining if an aurora may be present.
+'''
+
 import cv2 as cv
 import numpy as np
 import os
@@ -11,10 +15,26 @@ import shutil
 import logging
 from multiprocessing import Process, Pool
 
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import matplotlib.pyplot as plt; plt.ion()
 import pandas as pd
 
 from YooperCam import YooperCam
+
+
+parser = ArgumentParser(description=__doc__,
+                        formatter_class=RawDescriptionHelpFormatter)
+parser.add_argument('-l','--loglevel', type=int, default=20,
+                     help='Logger level for debugging' +
+                    '10 for max, 21 for high, 30 for warnings/errors.')
+parser.add_argument("-o", "--outfile", default='', help="Set " +
+                    "output file name. Defaults to generic csv from datetime.")
+
+# Handle arguments:
+args = parser.parse_args()
+
+logging_value = args.loglevel
+outfile = args.outfile
 
 logging.basicConfig()
 DEBUG2 = 11
@@ -26,7 +46,7 @@ logging.addLevelName(HIGH_DEBUG,"HIGH_DEBUG")
 logging.addLevelName(DATA,"DATA")
 
 log = logging.getLogger("auraCheck")
-log.setLevel(level=10)
+log.setLevel(level=logging_value)
 
 data_log = logging.getLogger("writeData")
 data_1 = logging.FileHandler("data.log")
@@ -229,11 +249,13 @@ class auraCheck():
             pre = self.pre
             self.img = img
         elif prev is None:
+            log.log(HIGH_DEBUG,"Prev is None \n")
             return None
         elif type(prev) is np.ndarray:
             # If a reference image is provided, use it for the test instead
             # Added for klustering without multiple runs
             pre = prev
+            log.log(HIGH_DEBUG,"Prec is an ndarray, testing will commence\n")
         else:
             # If unknown situation, quit
             log.error(f"Situation unknown reference image \'prev\' = {prev}"
@@ -242,6 +264,7 @@ class auraCheck():
 
         # Kluster the image if true
         if self.doKCluster is True:
+            log.log(HIGH_DEBUG,"Clustering from isAurora\n")
             img = self.kClust(image, Display=False)
         
         ### get rgb components as floats
@@ -914,6 +937,21 @@ if __name__ == "__main__":
     # File to analyze
     files2check = 'video_name.mp4'
     
+    # File to write
+    if outfile == '':
+        file2write=dt.now().strftime(f"Nov3_25_gill_%m-%d_%H.csv")
+    else:
+        if outfile.rpartition('.')[2] != 'csv':
+            if outfile.count('.') != 0:
+                log.error("Given filename does not meeting writing +"
+                          "requirements. Please follow the format:" +
+                          "path/to/{filename}.csv")
+                raise NameError
+            else:
+                file2write = outfile + '.csv'
+        else:
+            file2write = outfile
+
     # Tests to do
     x.tests['No Clustering'] = {'doKCluster':False,'_kValue':0}
     x.tests['Kluster 2']     = {'doKCluster':True ,'_kValue':2}
@@ -925,4 +963,4 @@ if __name__ == "__main__":
 
     
     x.fromVideo(video_file=files2check, efficient_testing=True,
-                filename=dt.now().strftime(f"Nov3_25_gill_%m-%d_%H.csv"))
+                filename=file2write)
