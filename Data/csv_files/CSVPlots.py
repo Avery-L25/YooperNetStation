@@ -3,6 +3,7 @@
 import cv2 as cv
 import numpy as np
 import os
+import sys
 import csv
 import toml
 from time import sleep, time
@@ -37,18 +38,16 @@ colors = {'mask_mse':'gray',
 
 # region Helper Functions
 def getDF(file) -> pd.DataFrame:
-    global df, data, plotting_data
     df = pd.read_csv(file,header=0)
-    data = splitDF(df)
-    plotting_data = df
-    return df.copy()
+    return df
 
 
-def splitDF(dfz) -> dict[str, pd.DataFrame]:
+def splitByFolder(dfz) -> dict[str, pd.DataFrame]:
     data = {}
+    df2 = dfz.copy()
     try:
         for i in dfz['folder'].unique():
-            _, mini_df = dfz.groupby(df['folder'] == i)
+            _, mini_df = dfz.groupby(df2['folder'] == i)
             data[i] = mini_df[1]
             print(i)
     except KeyError:
@@ -58,8 +57,51 @@ def splitDF(dfz) -> dict[str, pd.DataFrame]:
         pass
     return data
 
+def splitBy(dfz, What_Splitting) -> dict[str, pd.DataFrame]:
+    '''
+    Split a pandas dataframe into a dictionary of dfs by unique values in a 
+    column. 
+
+    Parameters
+    ----------
+    dfz: pandas.Dataframe
+        The data frame being worked with
+    What_Splitting: str
+        The data you want to be sorted by, this will also be the name of 
+        the dictionary item that contains the split dataframes
+
+    Outputs
+    -------
+    data: dict[unique value, df of that unique value]
+
+    Examples
+    --------
+    df = ([])
+    df_dict = splitBy(df, 'folder')
+    --> print
+    '''
+    data = {}
+    df2 = dfz.copy()
+    try:
+        uniq_vals = dfz[What_Splitting].unique()
+        for i in uniq_vals:
+            if len(uniq_vals) == 1:
+                data[i] = dfz
+                return data
+            
+            _, mini_df = dfz.groupby(df2[What_Splitting] == i)
+            data[i] = mini_df[1]
+            print(mini_df)
+            print(i)
+    except KeyError:
+        print(f'No {What_Splitting} to split from')
+        data['df'] = dfz
+    except ValueError:
+        pass
+    return data
+
 def checkDF(DF, dataz: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    global df, data, plotting_data
+    global plotting_data
     if type(DF) is pd.DataFrame:
         plotting_data = DF 
     elif type(DF) is list:
@@ -75,10 +117,10 @@ def checkDF(DF, dataz: dict[str, pd.DataFrame]) -> pd.DataFrame:
             plotting_data = pd.concat(Df2, ignore_index=True)
         except KeyError:
             plotting_data = dataz['df']
+    else:
+        raise TypeError(f'Incorrect Type of DF passed {type(DF)}')
     return plotting_data
                 
-
-
 
 def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle='solid', xlabel='', ylabel='', ptitle=''):
     dicts = {'df':plotting_data,'color':colors}
@@ -261,53 +303,88 @@ def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle
 #         g.grid(axis='x')
 # endregion
 
-
-dfs = {}
-local_path = os.path.dirname(__file__)
-path_to_check = '/home/amland/mnt/g/My Drive/testing/video'
-abs_dir = path_to_check.rpartition('/')[0]
-for i in os.listdir(path_to_check):
-    if '.csv' in i:
-        csv_path = os.path.join(path_to_check,i)
-        df2add = getDF(csv_path)
-        print(csv_path)
-        dfs[i.partition('_')[0]] = df2add
-        print(f"adding {df2add} to {df}\n\n\n\n")
-                # df = pd.concat(df,df2)
-
+def getMoreCSVs(path_to_check):
+    dfs = {}
+    local_path = os.path.dirname(__file__)
+    abs_dir = path_to_check.rpartition('/')[0]
+    for i in os.listdir(path_to_check):
+        if '.csv' in i:
+            csv_path = os.path.join(path_to_check,i)
+            df2add = getDF(csv_path)
+            print(csv_path)
+            dfs[i.partition('_')[0]] = df2add
+            print(f"adding {df2add} to {df}\n\n\n\n")
+                    # df = pd.concat(df,df2)
+    return dfs
 
 # Init Plots
-fig, ax = plt.subplots(1, sharex=True,sharey=False)
-# ax0 = ax[0]
-# ax1 = ax[1]
+
+fig, ax = plt.subplots(3, sharex=True,sharey=False)
+ax0 = ax[0]
+ax1 = ax[1]
+ax2 = ax[2]
+
+# Current Plotting Info
+df = getDF('Nov3_25_11pmTest.csv')
+data_tests = splitBy(df, 'Test Name')
+triple_data = {}
+for k, v in data_tests.items():
+    vdata = splitBy(v, 'Cluster Method')
+    triple_data[k] = vdata
+
 
 # Plot data for each item
-test = 'Test_es24_ei55'
+test = 'Nov3_25_11'
 inc_linew = 1
 line_style = ['solid', (0, (5, 5)), (5, (10, 3)), (0, (1, 5))]
-for k, v in dfs.items():
-    
-    vdata = splitDF(v)
-    plot = checkDF(['Dark', test], vdata)
-    # Edit figure
-    fig.subplots_adjust(top=0.95,
-                        bottom=0.05,
-                        left=0.075,
-                        right=0.925,
-                        hspace=0.2,
-                        wspace=0.2)
+xkey = 'Time(ms)'
+ykey = 'mask_norm'
+
+
+for test_key in triple_data.keys():
+    cur_test = triple_data[test_key]
+    if len(cur_test.keys()) == 1:
+        plot = cur_test[-1]
+        for axes in ax:
+            axes.plot( plot['Time(ms)']/1000, plot[ykey],
+                       label=f"{test_key}: {ykey}",linewidth=3,
+                         linestyle='solid')
+    else:
+        for key, vals in cur_test.items():
+            ax[key].plot(vals['Time(ms)']/1000, vals[ykey],
+                         label=f"{test_key}({key}): {ykey}",
+                         linewidth=1, linestyle='dashed')
+
+
     # plt.xlim(0,1000)
     
 
     # write data to plots side by side plots
-    ax.plot( plot['mask_norm'],label=f"{k}: {['mask_mse']}",linewidth=1, linestyle=line_style[inc_linew-1])
+    # ax.plot( plot['mask_norm'],label=f"{k}: {['mask_mse']}",linewidth=1, linestyle=line_style[inc_linew-1])
     # ax0.plot( v['Red'],     linewidth=1, linestyle='solid')
     # ax0.plot( v['Green'],   linewidth=1, linestyle='dashed')
     # ax0.plot( v['Blue'],    linewidth=2, linestyle='dotted')
 
     inc_linew = inc_linew + 1
 
-ax.legend()
+
+
+# Edit figure
+fig.subplots_adjust(top=0.90,
+                    bottom=0.05,
+                    left=0.075,
+                    right=0.925,
+                    hspace=0.2,
+                    wspace=0.2)
 fig.suptitle(test, fontsize=16)
-ax.set_xlabel('photo count')
-ax.set_ylabel('mse value')
+
+subtitles = {0:'Full Size',
+             1:'Shrunk After',
+             2:'Small Size'}
+j = 0 
+for i in ax:
+    i.legend()
+    i.set_title(subtitles[j])   
+    i.set_xlabel('Time (Seconds)')
+    i.set_ylabel('Norm Value')
+    j = j + 1

@@ -15,9 +15,10 @@ import subprocess
 
 import shutil
 import os
-import os.path
-from os.path import isfile, join
+from os import path # , listdir
+from os.path import  join # isfile,  getsize, isdir
 import h5py
+import glob
 import toml
 
 # Upload file using google API
@@ -54,6 +55,7 @@ file_ext_del = ['png', 'csv']
 safe_dirs = ['Sensors']
 rclone_remote = yoop_paths['REMOTE_CONFIG']
 
+# region Upload
 # Define functions # todo check rclone setup for installer
 def rclone(move=True, path='', folder=''):
     '''
@@ -81,7 +83,7 @@ def rclone(move=True, path='', folder=''):
         #! Upload a flag or file to alert handler?
     
     # Create remote path for upload
-    remote_path = os.path.join(rclone_remote,folder)
+    remote_path = join(rclone_remote,folder)
     # create command to upload folder using rclone
     str_cmd = f"rclone copy {path} {remote_path}"
     
@@ -89,6 +91,79 @@ def rclone(move=True, path='', folder=''):
     # print(f"string based command: {str_cmd}")
     runStr(str_cmd)
 
+
+# todo will this function be valueable
+def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google Drive
+    '''
+    Upload data to the google drive.
+    '''
+    creds = None
+    token_path = '/home/USER/SPRL_Observatory/Token_management/token_2.json'
+    creds_path = '/home/USER/SPRL_Observatory/Token_management/credentials.json'
+
+    if path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                creds_path, SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+
+        with open(token_path, "w") as token:
+            token.write(creds.to_json())
+
+    try:
+        service = build("drive", "v3", credentials=creds)
+
+        file_metadata = {"name": file_name, "parents": [folder_id]}
+        media = MediaFileUpload(
+            file_name, mimetype="application/x-hdf5", resumable=True
+        )
+        
+        file = (
+            service.files()
+            .create(body=file_metadata, media_body=media, fields="id",
+                    supportsAllDrives=True)
+            .execute()
+        )
+        print(f"File ID: {file['id']} uploaded successfully to folder"
+              f"{folder_id}.")
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+
+
+def uploadFiles():
+    '''
+    Uploads data files from the YooperNet station. Creates and/or updates 
+    working directories for data collection. Logs the procedure.
+
+    TODO
+        Upload all files
+        Update Directories
+        Write log
+
+    Parameters
+    ----------
+    '''
+    # Save extra variables before they are written
+    path_to_delete = data_folder_full
+    # 1st: Upload files
+    # rclone -> upload current working folder to remote with same name
+    rclone(path=data_folder_full,folder=current_data_folder)
+
+    # 2nd: Update working directory
+    #! Need to assign when file changes
+    dataLoc(date=filler)
+
+    # 3rd: Delete uploaded files
+    # ! implement once operable
+    # shutil(path_to_delete)
+
+# endregion
 
 def dataLoc(date, format=''):
     '''
@@ -113,7 +188,7 @@ def dataLoc(date, format=''):
     current_data_folder = date.strftime(data_folder_format)
     data_folder_full = f"{wkdir}/Data/{current_data_folder}"
 
-    if os.path.exists(data_folder_full) is False:
+    if path.exists(data_folder_full) is False:
         os.mkdir(data_folder_full)
         os.mkdir(f"{data_folder_full}/{img_folder_format}")
         # start sensor csv
@@ -249,7 +324,7 @@ def deleteFiles(path):
             for file in files:
                 if file.rpartition('.')[2] in file_ext_del:
                     error(f"deleting {file}")
-                    # os.remove(os.path.join(root,file))
+                    # os.remove(join(root,file))
         
         # Delete the directory if emptied  #? force delete if there is something else?
         if dirs == []:
@@ -258,10 +333,10 @@ def deleteFiles(path):
             for d in dirs:
                 if d in safe_dirs:
                     continue
-                d_len = len(os.listdir(os.path.join(root,d)))
+                d_len = len(os.listdir(join(root,d)))
                 if d_len == 0:
                     error(f"deleting empty dir {d}")
-                    # os.rmdir(os.path.join(root,d))
+                    # os.rmdir(join(root,d))
                 else:
                     log(f"{d_len} files in {d}")
         print(f"roots are {root}")
@@ -273,85 +348,118 @@ def deleteFiles(path):
     # option 2: fast with shutil
     # shutil.rmtree to delete a whole tree 
 
+def dataSize(path):
+    'Get the size data in path, the total disk usage.'
+    total, used, free = shutil.disk_usage('/')
+    
+    file_size = 0
+    for root,dirs,files in os.walk('projects',topdown=False):
+        # skip any roots or directories we want to 
+        # if any(item in root for item in safe_dirs):
+        #     continue
 
-# todo will hdf5 be used
+        # If there are files in the directory delete based on #! extension or flag
+        if files == []:
+            pass
+        elif type(files) is list:
+            for file in files:
+                # get each filesize and add it to the total
+                fs = path.getsize(join(root,file))
+                file_size = file_size + fs
+
+        print(f"Total file size is now {file_size}")
+        print(f"roots are {root}")
+        print(f"Directories ares{dirs}")
+        print(f"Files are {files}\n\n")
+
+    def b2gb(val): 
+        'Turn bytes value into gigabytes'
+        return (val / (1024**3))
+    
+    # If upload at a certaint file size
+    file_size_gb = b2gb(file_size)
+    
+    # If upload based on disk storage
+    total_percent_used = used/total
+    total_percent_free = free/total
+
+    # If upload based on how much the system storage is using
+    total_percent_by_station = file_size/total
+
+
+# region hdf5 functions
 def createHDF5(file_name):
     '''
     Creates an empty hdf5 files
     '''
     pass
 
-
-# todo will this function be valueable
-def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google Drive
+def build_hdf(date, gps, temp, pres, mag, img, file):
     '''
-    Upload data to the google drive.
+    Builds hdf5 file with XXX \'groups\' to write data too.
     '''
-    creds = None
-    token_path = '/home/USER/SPRL_Observatory/Token_management/token_2.json'
-    creds_path = '/home/USER/SPRL_Observatory/Token_management/credentials.json'
+    print('build hdf')
+    with h5py.File(file, "w") as f:
+        f.create_dataset("date", maxshape=(None,), dtype=h5py.string_dtype(),
+                         data=[date])
+        f.create_dataset("gps", maxshape=(None,), dtype='f', data=[gps])
+        f.create_dataset("temperature", maxshape=(None, 2), dtype='f',
+                         data=[temp])
+        f.create_dataset("pressure", maxshape=(None,), dtype='f', data=[pres])
+        f.create_dataset("magnetic field", maxshape=(None, 3), dtype='f',
+                         data=[mag])
 
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                creds_path, SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-
-        with open(token_path, "w") as token:
-            token.write(creds.to_json())
-
-    try:
-        service = build("drive", "v3", credentials=creds)
-
-        file_metadata = {"name": file_name, "parents": [folder_id]}
-        media = MediaFileUpload(
-            file_name, mimetype="application/x-hdf5", resumable=True
-        )
-        
-        file = (
-            service.files()
-            .create(body=file_metadata, media_body=media, fields="id",
-                    supportsAllDrives=True)
-            .execute()
-        )
-        print(f"File ID: {file['id']} uploaded successfully to folder"
-              f"{folder_id}.")
-    except HttpError as error:
-        print(f"An error occurred: {error}")
+        # create group for images and their own timestamps
+        i = f.require_group("images")
+        i.create_dataset("date", maxshape=(None,), dtype=h5py.string_dtype(),
+                         data=[date])
+        i.create_dataset("aurora img", maxshape=(None, 512, 512, 3),
+                         dtype='uint8', data=[img])
+        i.create_dataset("aurora flag", maxshape=(None,), dtype=h5py.string_dtype(),
+                         data=['Start of file'])
 
 
-def uploadFiles():
-    '''
-    Uploads data files from the YooperNet station. Creates and/or updates 
-    working directories for data collection. Logs the procedure.
+def add_data(date, gps, temp, pres, mag, img, file, camflag, aurflag):
+    print('add data')
+    with h5py.File(file, "a") as f:
+        f["date"].resize((f["date"].shape[0] + 1), axis=0)
+        f['date'][-1] = date
+        f["gps"].resize((f["gps"].shape[0] + 1), axis=0)
+        f["gps"][-1:] = gps
+        f["temperature"].resize((f["temperature"].shape[0] + 1), axis=0)
+        f['temperature'][-1] = temp
+        f["pressure"].resize((f["pressure"].shape[0] + 1), axis=0)
+        f['pressure'][-1] = pres
+        f["magnetic field"].resize((f["magnetic field"].shape[0] + 1), axis=0)
+        f['magnetic field'][-1] = mag
 
-    TODO
-        Upload all files
-        Update Directories
-        Write log
+        # adds photos and their appropriate timestamp
+        if camflag is True:  # if image was taken upload image
+            i = f.require_group("images")
+            i["date"].resize((i["date"].shape[0] + 1), axis=0)
+            i['date'][-1] = date
+            i['aurora img'][-1] = img
+            i["aurora img"].resize((i["aurora img"].shape[0] + 1), axis=0)
+            i['aurora flag'].resize((i["aurora flag"].shape[0] + 1), axis=0)
+            if aurflag is True:
+                i['aurora flag'][-1] = "True"
+            else:
+                i['aurora flag'][-1] = "False"
 
-    Parameters
-    ----------
-    '''
-    # Save extra variables before they are written
-    path_to_delete = data_folder_full
-    # 1st: Upload files
-    # rclone -> upload current working folder to remote with same name
-    rclone(path=data_folder_full,folder=current_data_folder)
 
-    # 2nd: Update working directory
-    #! Need to assign when file changes
-    dataLoc(date=filler)
+def hdf(mag, pres, temp, gps, img, file, camflag, aurflag):
+    global utc_now
 
-    # 3rd: Delete uploaded files
-    # ! implement once operable
-    # shutil(path_to_delete)
+    d_t = np.datetime64('now').item().strftime('%Y_%m_%d_%H_%M_%S')
+
+    utc_now = datetime.datetime.now(datetime.timezone.utc)
+    if glob.glob(file):
+        add_data(d_t, gps, temp, pres, mag, img, file, camflag, aurflag)
+    else:
+        build_hdf(d_t, gps, temp, pres, mag, img, file)
+
+# endregion
+
 
 # Run commands from strings
 def runStr(cmd: str):

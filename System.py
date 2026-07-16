@@ -1,5 +1,29 @@
 #!/usr/bin/env python3
 
+'''
+Script to run the prototype YooperNet Observational Station.
+Will use configurations set in the \'.YooperConfig.toml\' file.
+
+Primary Functions
+-----------------
+Taking All-Sky Images
+    Methods are primarily held in \'YooperCam.py,\' this script manages the
+    frequency of the image capturing.
+Magnetometer Data
+    Collects data from a chip-based moldwin magnetometer an several other
+    sensors including a thermometer and barometer.
+Writing to CSVs
+    Data is written to two files; a camera file and a sensor file.
+    These files are used to account for the different frequencies of
+    data collection.
+Uploading Files
+    Uploads data using to google drive using \'rclone.\' rclone should be
+    configured before running the station.
+
+
+Can be called using startStation() if using a seperate script.
+'''
+
 # sensor interfacing functions
 from YooperCam import YooperCam
 from Sensors.barom_therm_data_collection import temp_n_pres
@@ -68,13 +92,16 @@ def startCam():
                 cam_working = True
 
             elif error_code == 11:
-                # Error grabbing exposure, likely image is too dark
+                # Error grabbing exposure
+                # Usually occurs if the image was too dark
+                # To be expected with the short exposure
                 #! warning/error
                 print(error_code)
                 cam_working = True
 
             else:
                 # Other errors needing additional diagnosis
+                #! error/critical
                 print(zwo_error)
                 print("="*35 + "\n")
                 sys.exit()
@@ -142,7 +169,7 @@ def _readSensors():
 
 def startStation():
     'Start data collection'
-    ### Initialize Camera Object
+    # Initialize Camera Object
     global ycam
     ycam = startCam()
 
@@ -154,6 +181,7 @@ def startStation():
     #todo determine and implement a stop condition
     try:
         while True:
+            #! This should encapsulate taking the photo, logging, and analysis
             captureImage(expSec=1)
             time.sleep(1)    
     except KeyboardInterrupt:

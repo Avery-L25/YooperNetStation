@@ -90,11 +90,15 @@ class YooperCam(ZWOCamera):
         self.start_x, self.start_y = pza.getStartPos(self._cameraID)
         self.width, self.height, self.binning, self.imageType = self._roi[2:]
 
-        # Saving Informartiong
+        # Saving Informartion
         self._imgName = ''  # To track current name for logging purposes
         self.img_folder = ''  # Track saving location internally    
         self._imgInfoFile = '' # Track info file name
-
+        self._CameraDirectory =  os.path.dirname(os.path.realpath(__file__))
+        self.tomlPath = os.path.join(self._CameraDirectory,
+                                     '.YooperConfig.toml')
+        self.tomlDefaultsPath = os.path.join(self._CameraDirectory,
+                                             'Setup/Default.toml')
         # Configure object ROI and Controls from toml file
         # Assign default locations
         self.configFromToml()
@@ -443,9 +447,10 @@ class YooperCam(ZWOCamera):
         '''
         # Load Config Files
         if default is True:
-            config_file_path = os.getcwd() + "Setup/default.toml"
-        elif default is False:
-            config_file_path = os.getcwd() + "/.YooperConfig.toml"
+            # Loads a default configuration
+            config_file_path = self.tomlDefaultsPath
+        else:
+            config_file_path = self.tomlPath
 
         yoop_config      = toml.load(config_file_path)
 
