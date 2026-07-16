@@ -29,6 +29,7 @@ parser.add_argument('-l','--loglevel', type=int, default=25,
                     '10 for max, 21 for high, 30 for warnings/errors.')
 parser.add_argument("-o", "--outfile", default='', help="Set " +
                     "output file name. Defaults to generic csv from datetime.")
+parser.add_argument("-i", "--infile", help="Assign file to read.")
 
 # Handle arguments:
 args = parser.parse_args()
@@ -62,6 +63,15 @@ class auraCheck():
         self._testingPre = {}
         self.masked = None
         self.premask= None
+
+        # Time is yet to be implemented
+        # Used to track total time
+        self._startTime = dt.now()
+        self._endTime = dt.now()
+        # Used to track between time
+        self.startTime = dt.now()
+        self.endTime = dt.now()
+        self.deltaTime = self.endTime - self.startTime
         self.file = None # dt.now().strftime("Data/test_files/check_data_%Y-%m-%d_%H-%M-%S.csv")
         self.auraDict = {}
         self._fileHasHeader = False
@@ -111,7 +121,7 @@ class auraCheck():
         curTestDict['K Value'] = v['_kValue']
         self._kValue = v['_kValue']
         
-        
+        self.startTime = dt.now()
         # Attempt to get previous images, otherwise write as empty
         try:
             preDict = self._testingPre[k]
@@ -137,6 +147,7 @@ class auraCheck():
 
             # Small klustered image
             self._kSmall = 2
+            self.startTime = dt.now() # Reset before clustering
             img2 = self.kClust(img)
             ctd2 = curTestDict.copy()
             ctd2['Cluster Method'] = 2
@@ -319,7 +330,7 @@ class auraCheck():
             verygreen = cv.bitwise_and(maskgreendominant, inverseNeutral)  #* This shows only the areas where green is dominant over blue or red AND rgb is not similar
 
             if img.shape != verygreen.shape:
-                log.critical(f"img and mask \'verygreen\' shape do not match\n"
+                log.debug(f"img and mask \'verygreen\' shape do not match\n"
                              f"img shape = {img.shape} and maske shape = {verygreen.shape}")
             # Apply masks and get images
             masked_img = cv.bitwise_and(img, img, mask=verygreen)  # Display the image only whre the verygreen mask values are
@@ -369,6 +380,7 @@ class auraCheck():
         self._auroraFlag = bool(mask_norm)  # currently any difference in the 'very green' region will be marked as a potential aurora
 
         finish_proc = dt.now()  # Get end of processing
+        #? proc_time = finish_proc - self.startTime
         proc_time = finish_proc - start_proc
         log.info(f"Processing tooking {proc_time}")
         dictW['Processing Time'] = proc_time
@@ -492,6 +504,7 @@ class auraCheck():
         '''
         # Read the video file
         cap = cv.VideoCapture(video_file)
+        self._startTime = dt.now()
         vcd = {}
         vcd['Time(ms)'] = cv.CAP_PROP_POS_MSEC
         vcd['Time(frames)'] = cv.CAP_PROP_POS_FRAMES
@@ -507,10 +520,11 @@ class auraCheck():
         state = True
         log.log(HIGH_DEBUG,f"Video Capture status before: {cap.isOpened()}")
         while cap.isOpened():
+            
             if state:
                 # Get next frame
                 ret, frame = cap.read()
-
+                self.startTime = dt.now()
                 # if frame is read correctly ret is True
                 if not ret:
                     print("Can't receive frame (stream end?). Exiting ...")
@@ -567,9 +581,11 @@ class auraCheck():
                         break
                     elif key_press == ord(' '): 
                         state = not state  # [space] for pause
-
+                self.endTime = dt.now()
+                self.deltaTime = self.endTime - self.startTime     
 
         # Stop video after loop
+        self._endTime = dt.now()
         cap.release()
         if vis_comp is True:
             # Close the window if it is being diplayed

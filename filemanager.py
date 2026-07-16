@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+'''
+Methods for writing, uploading, and managing files for the YooperNet Stations.
+This includes when to start new files, name said files, and handling
+authentication necessary in the uploading process.
+'''
+
 import time
 from suntime import Sun
 import schedule
@@ -49,7 +55,7 @@ safe_dirs = ['Sensors']
 rclone_remote = yoop_paths['REMOTE_CONFIG']
 
 # Define functions # todo check rclone setup for installer
-def rclone(path='', folder=''):
+def rclone(move=True, path='', folder=''):
     '''
     Given a folder (and path???) uploads the folder and its contents to 
     the set "remote" path in rclone.
@@ -63,19 +69,25 @@ def rclone(path='', folder=''):
         the name of the folder to hold the uploaded data, if not present
         at remote a new folder will be made.
     '''
-    print(folder)
+    # log(folder)
+
+    # Get type of command for upload
+    if move is True:
+        uploadMethod = 'move'
+    elif move is False:
+        uploadMethod = 'copy'
+    else:
+        print("CRITICAL ERROR: UNKNOWN UPLOADING OPERATION")
+        #! Upload a flag or file to alert handler?
+    
+    # Create remote path for upload
     remote_path = os.path.join(rclone_remote,folder)
     # create command to upload folder using rclone
-    command = ["rclone", "copy", path, remote_path]
     str_cmd = f"rclone copy {path} {remote_path}"
     
-    # update a list to use directly
-    print(command)
-    command[-1] = command[-1] + folder
-
     # output the two would-be commands
-    print(f"list based command: {command}")
-    print(f"string based command: {str_cmd}")
+    # print(f"string based command: {str_cmd}")
+    runStr(str_cmd)
 
 
 def dataLoc(date, format=''):
