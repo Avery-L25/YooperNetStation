@@ -24,7 +24,7 @@ from YooperCam import YooperCam
 
 parser = ArgumentParser(description=__doc__,
                         formatter_class=RawDescriptionHelpFormatter)
-parser.add_argument('-l','--loglevel', type=int, default=20,
+parser.add_argument('-l','--loglevel', type=int, default=25,
                      help='Logger level for debugging' +
                     '10 for max, 21 for high, 30 for warnings/errors.')
 parser.add_argument("-o", "--outfile", default='', help="Set " +
@@ -73,7 +73,9 @@ class auraCheck():
         
         self.tests = {'No Clustering':{'doKCluster':False,'_kValue':0}}
         self.auraDict['Test Name'] = 'No Clustering'
-        self._doMultiProc = True
+        self.auraDict['K Value'] = 0
+        self.auraDict['Cluster Method'] = -1
+        self._doMultiProc = False
         pass
 
 
@@ -86,7 +88,7 @@ class auraCheck():
             setattr(self,image_detecting_vars,np.zeros((size, size, 3)))  # todo: fix property
         return None
 
-    def runTest(self, img, k, v):
+    def runTest(self, img, k, v) -> None:
         '''
         Test a k value for clustering of an image using aurora detection.
         Will test at original image size, shrinking after clustering, and small.
@@ -106,7 +108,7 @@ class auraCheck():
         log.log(DATA,f"Running test {k} with params {v}\n\n\n")
         curTestDict = self.auraDict.copy()
         curTestDict['Test Name'] = k
-        curTestDict['K Vakue'] = v['_kValue']
+        curTestDict['K Value'] = v['_kValue']
         self._kValue = v['_kValue']
         
         
@@ -122,18 +124,24 @@ class auraCheck():
             # Full size klustered image
             img0 = self.kClust(img)
             log.debug(f"isAurora on img0 test {k} with params {v} \n\n\n")
-            x = self.isAurora(img0, curTestDict.copy(), preDict['img0'])
+            ctd0 = curTestDict.copy()
+            ctd0['Cluster Method'] = 0
+            x = self.isAurora(img0, ctd0, preDict['img0'])
 
             # Shrunk klustered images
             img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
             log.debug(f"isAurora on img1 test {k} with params {v} \n\n\n")           
-            x = self.isAurora(img1, curTestDict.copy(), preDict['img1'])
+            ctd1 = curTestDict.copy()
+            ctd1['Cluster Method'] = 1
+            x = self.isAurora(img1, ctd1, preDict['img1'])
 
             # Small klustered image
             self._kSmall = 2
             img2 = self.kClust(img)
+            ctd2 = curTestDict.copy()
+            ctd2['Cluster Method'] = 2
             log.debug(f"isAurora on img2 test {k} with params {v} \n\n\n")
-            x = self.isAurora(img2, curTestDict.copy(), preDict['img2'])
+            x = self.isAurora(img2, ctd2, preDict['img2'])
 
             # Update previous images
             preDict = {'img0':img0,'img1':img1,'img2':img2}
@@ -142,6 +150,8 @@ class auraCheck():
             # Do a standard test
             log.debug(f"isAurora on default image test {k} with params {v} \n\n\n")
             x = self.isAurora(img)
+        
+        return None
 
     def doTests(self, image):
         '''
@@ -370,12 +380,13 @@ class auraCheck():
         except NameError:
             log.critical("There is no test name in passed dictionary.")
             raise NameError
-        self.write2CSV(self.auraDict)
+
+        self.write2CSV(dictW)
         log.info(f"finished checking for aurora")
 
         return (mask_mse, mask_norm, color_sums)
 
-    def kClust(self, img, Display=False):
+    def kClust(self, img, Display=False) -> np.ndarray:
         start = dt.now()
         K = self._kValue
 
@@ -935,7 +946,7 @@ if __name__ == "__main__":
     x = auraCheck()
     
     # File to analyze
-    files2check = 'video_name.mp4'
+    files2check = 'Data/Videos/shortest.mp4' #'video_name.mp4'
     
     # File to write
     if outfile == '':
