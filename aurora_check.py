@@ -304,8 +304,11 @@ class auraCheck():
         g1_p = g_p * 1.0
         b1_p = b_p * 1.0
         
-
         def maskCheck():
+            mask = img[img]
+
+
+        def maskCheck_old():
             # Credit:
             # https://github.com/joncooper65/raspberry-aurora/blob/master/detect.py
             global dicty

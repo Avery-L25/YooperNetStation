@@ -30,8 +30,8 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaUpload
 
 ### Load Config Files
-wkdir = os.getcwd()
-config_file_path = wkdir + "/.YooperConfig.toml"
+wkdir = path.dirname(path.realpath(__file__))
+config_file_path = join(wkdir, "/.YooperConfig.toml")
 yoop_config = toml.load(config_file_path)
 
 # Write Storage Locations
@@ -97,13 +97,16 @@ def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google D
     '''
     Upload data to the google drive.
     '''
+
     creds = None
     token_path = '/home/USER/SPRL_Observatory/Token_management/token_2.json'
     creds_path = '/home/USER/SPRL_Observatory/Token_management/credentials.json'
 
+    # Get credentials for uploading to google drive folder
     if path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
 
+    # Get new credentials if no valid options
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -116,6 +119,7 @@ def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google D
         with open(token_path, "w") as token:
             token.write(creds.to_json())
 
+    # Attempt to upload data
     try:
         service = build("drive", "v3", credentials=creds)
 
@@ -164,6 +168,93 @@ def uploadFiles():
     # shutil(path_to_delete)
 
 # endregion
+
+# region Local Files
+
+# delete files #? mark with flags for deletion?
+def deleteFiles(path):
+    '''
+    Deletes files after upload verification.
+    TODO: Add file types to mark
+    '''
+    global file_ext_del, safe_dirs
+    # option 1: methodically, seperately delete each file. Can look for flags or unique filetype
+    for root,dirs,files in os.walk('projects',topdown=False):
+        # skip any roots or directories we want to blacklist
+        if any(item in root for item in safe_dirs):
+            continue
+
+        # If there are files in the directory delete based on #! extension or flag
+        if files == []:
+            pass
+        elif type(files) is list:
+            for file in files:
+                if file.rpartition('.')[2] in file_ext_del:
+                    # log error(f"deleting {file}")
+                    # os.remove(join(root,file))
+        
+        # Delete the directory if emptied  #? force delete if there is something else?
+        if dirs == []:
+            pass
+        else:
+            for d in dirs:
+                if d in safe_dirs:
+                    continue
+                d_len = len(os.listdir(join(root,d)))
+                if d_len == 0:
+                    # logerror(f"deleting empty dir {d}")
+                    # os.rmdir(join(root,d))
+                else:
+                    # log log(f"{d_len} files in {d}")
+                    pass
+        print(f"roots are {root}")
+        print(f"Directories ares{dirs}")
+        print(f"Files are {files}\n\n")
+    # os.remove to delete a file
+    # os.rmdir to delete an empty directory
+
+    # option 2: fast with shutil
+    # shutil.rmtree to delete a whole tree 
+
+def dataSize(path):
+    'Get the size data in path, the total disk usage.'
+    total, used, free = shutil.disk_usage('/')
+    
+    file_size = 0
+    for root,dirs,files in os.walk('projects',topdown=False):
+        # skip any roots or directories we want to 
+        # if any(item in root for item in safe_dirs):
+        #     continue
+
+        # If there are files in the directory delete based on #! extension or flag
+        if files == []:
+            pass
+        elif type(files) is list:
+            for file in files:
+                # get each filesize and add it to the total
+                fs = path.getsize(join(root,file))
+                file_size = file_size + fs
+
+        print(f"Total file size is now {file_size}")
+        print(f"roots are {root}")
+        print(f"Directories ares{dirs}")
+        print(f"Files are {files}\n\n")
+
+    def b2gb(val): 
+        'Turn bytes value into gigabytes'
+        return (val / (1024**3))
+    
+    # If upload at a certaint file size
+    file_size_gb = b2gb(file_size)
+    
+    # If upload based on disk storage
+    total_percent_used = used/total
+    total_percent_free = free/total
+
+    # If upload based on how much the system storage is using
+    total_percent_by_station = file_size/total
+
+    return file_size_gb, total_percent_used, total_percent_by_station
 
 def dataLoc(date, format=''):
     '''
@@ -258,6 +349,7 @@ def getSun(lati=42.279594, long=-83.732124):  # Get working file
     
     return next_event, sun_does_whaaat
 
+# endregion
 
 # ? Use this as format to update??
 def updateJobs():  # Turn off the cam
@@ -304,87 +396,6 @@ def updateJobs():  # Turn off the cam
         print('CAMERA OFF\n')
     else:
         print(f"Error with collecting next sun event type")
-
-# delete files #? mark with flags for deletion?
-def deleteFiles(path):
-    '''
-    Deletes files after upload verification.
-    '''
-    global file_ext_del, safe_dirs
-    # option 1: methodically, seperately delete each file. Can look for flags or unique filetype
-    for root,dirs,files in os.walk('projects',topdown=False):
-        # skip any roots or directories we want to blacklist
-        if any(item in root for item in safe_dirs):
-            continue
-
-        # If there are files in the directory delete based on #! extension or flag
-        if files == []:
-            pass
-        elif type(files) is list:
-            for file in files:
-                if file.rpartition('.')[2] in file_ext_del:
-                    error(f"deleting {file}")
-                    # os.remove(join(root,file))
-        
-        # Delete the directory if emptied  #? force delete if there is something else?
-        if dirs == []:
-            pass
-        else:
-            for d in dirs:
-                if d in safe_dirs:
-                    continue
-                d_len = len(os.listdir(join(root,d)))
-                if d_len == 0:
-                    error(f"deleting empty dir {d}")
-                    # os.rmdir(join(root,d))
-                else:
-                    log(f"{d_len} files in {d}")
-        print(f"roots are {root}")
-        print(f"Directories ares{dirs}")
-        print(f"Files are {files}\n\n")
-    # os.remove to delete a file
-    # os.rmdir to delete an empty directory
-
-    # option 2: fast with shutil
-    # shutil.rmtree to delete a whole tree 
-
-def dataSize(path):
-    'Get the size data in path, the total disk usage.'
-    total, used, free = shutil.disk_usage('/')
-    
-    file_size = 0
-    for root,dirs,files in os.walk('projects',topdown=False):
-        # skip any roots or directories we want to 
-        # if any(item in root for item in safe_dirs):
-        #     continue
-
-        # If there are files in the directory delete based on #! extension or flag
-        if files == []:
-            pass
-        elif type(files) is list:
-            for file in files:
-                # get each filesize and add it to the total
-                fs = path.getsize(join(root,file))
-                file_size = file_size + fs
-
-        print(f"Total file size is now {file_size}")
-        print(f"roots are {root}")
-        print(f"Directories ares{dirs}")
-        print(f"Files are {files}\n\n")
-
-    def b2gb(val): 
-        'Turn bytes value into gigabytes'
-        return (val / (1024**3))
-    
-    # If upload at a certaint file size
-    file_size_gb = b2gb(file_size)
-    
-    # If upload based on disk storage
-    total_percent_used = used/total
-    total_percent_free = free/total
-
-    # If upload based on how much the system storage is using
-    total_percent_by_station = file_size/total
 
 
 # region hdf5 functions
@@ -460,12 +471,14 @@ def hdf(mag, pres, temp, gps, img, file, camflag, aurflag):
 
 # endregion
 
-
+# region helper functions
 # Run commands from strings
 def runStr(cmd: str):
     'run a string command as though it is in the terminal'
     command = cmd.split(' ')
     subprocess.run(command, check=True)
+
+# endregion
 
 #? Is this going to be a script to run, an object, or a method holder [?]
 while __name__ == '__main__':

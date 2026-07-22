@@ -11,8 +11,9 @@ from datetime import datetime as dt
 import shutil
 import logging
 
+from scipy.interpolate import interp1d
 
-import matplotlib.pyplot as plt; plt.ion()
+import matplotlib.pyplot as plt; plt.ion(); plt.close('all')
 import pandas as pd
 
 
@@ -317,74 +318,166 @@ def getMoreCSVs(path_to_check):
                     # df = pd.concat(df,df2)
     return dfs
 
-# Init Plots
 
-fig, ax = plt.subplots(3, sharex=True,sharey=False)
-ax0 = ax[0]
-ax1 = ax[1]
-ax2 = ax[2]
 
 # Current Plotting Info
-df = getDF('Nov3_25_11pmTest.csv')
-data_tests = splitBy(df, 'Test Name')
-triple_data = {}
-for k, v in data_tests.items():
-    vdata = splitBy(v, 'Cluster Method')
-    triple_data[k] = vdata
-
-
-# Plot data for each item
-test = 'Nov3_25_11'
-inc_linew = 1
-line_style = ['solid', (0, (5, 5)), (5, (10, 3)), (0, (1, 5))]
+kluster_plots = False
+interp_plots = True
 xkey = 'Time(ms)'
-ykey = 'mask_norm'
-
-
-for test_key in triple_data.keys():
-    cur_test = triple_data[test_key]
-    if len(cur_test.keys()) == 1:
-        plot = cur_test[-1]
-        for axes in ax:
-            axes.plot( plot['Time(ms)']/1000, plot[ykey],
-                       label=f"{test_key}: {ykey}",linewidth=3,
-                         linestyle='solid')
+ykey = 'mask_mse'
+try:
+    if Data_Was_Collected is False:
+        df = getDF('Nov3_25_11pmTest.csv')
+        data_tests = splitBy(df, 'Test Name')
+        triple_data = {}
+        for k, v in data_tests.items():
+            vdata = splitBy(v, 'Cluster Method')
+            triple_data[k] = vdata
     else:
-        for key, vals in cur_test.items():
-            ax[key].plot(vals['Time(ms)']/1000, vals[ykey],
-                         label=f"{test_key}({key}): {ykey}",
-                         linewidth=1, linestyle='dashed')
-
-
-    # plt.xlim(0,1000)
+        pass
+except NameError:
+    print('Collecting data')
+    df = getDF('Nov3_25_11pmTest.csv')
+    data_tests = splitBy(df, 'Test Name')
+    triple_data = {}
+    for k, v in data_tests.items():
+        vdata = splitBy(v, 'Cluster Method')
+        triple_data[k] = vdata
     
+    # Get main plot Data
+    Data_Was_Collected = True
 
-    # write data to plots side by side plots
-    # ax.plot( plot['mask_norm'],label=f"{k}: {['mask_mse']}",linewidth=1, linestyle=line_style[inc_linew-1])
-    # ax0.plot( v['Red'],     linewidth=1, linestyle='solid')
-    # ax0.plot( v['Green'],   linewidth=1, linestyle='dashed')
-    # ax0.plot( v['Blue'],    linewidth=2, linestyle='dotted')
+# region Kluster Plots
+if kluster_plots is True:
+    fig, ax = plt.subplots(3, sharex=True,sharey=True)
+    ax0 = ax[0]
+    ax1 = ax[1]
+    ax2 = ax[2]
 
-    inc_linew = inc_linew + 1
+    # Plot data for each item
+    test = 'Nov3_25_11'
+    inc_linew = 1
+    line_style = ['solid', (0, (5, 5)), (5, (10, 3)), (0, (1, 5))]
+
+
+    # Subplots
+    for test_key in triple_data.keys():
+        cur_test = triple_data[test_key]
+        if len(cur_test.keys()) == 1:
+            plot = cur_test[-1]
+            for axes in ax:
+                axes.plot( plot['Time(ms)']/1000, plot[ykey],
+                        label=f"{test_key}: {ykey}",linewidth=3,
+                            linestyle='solid')
+        else:
+            for key, vals in cur_test.items():
+                ax[key].plot(vals['Time(ms)']/1000, vals[ykey],
+                            label=f"{test_key}({key}): {ykey}",
+                            linewidth=1, linestyle='dashed')
+
+
+        # plt.xlim(0,1000)
+        
+
+        # write data to plots side by side plots
+        # ax.plot( plot['mask_norm'],label=f"{k}: {['mask_mse']}",linewidth=1, linestyle=line_style[inc_linew-1])
+        # ax0.plot( v['Red'],     linewidth=1, linestyle='solid')
+        # ax0.plot( v['Green'],   linewidth=1, linestyle='dashed')
+        # ax0.plot( v['Blue'],    linewidth=2, linestyle='dotted')
+
+        inc_linew = inc_linew + 1
 
 
 
-# Edit figure
-fig.subplots_adjust(top=0.90,
-                    bottom=0.05,
-                    left=0.075,
-                    right=0.925,
-                    hspace=0.2,
-                    wspace=0.2)
-fig.suptitle(test, fontsize=16)
+    # Edit figure
+    fig.subplots_adjust(top=0.90,
+                        bottom=0.05,
+                        left=0.075,
+                        right=0.925,
+                        hspace=0.2,
+                        wspace=0.2)
+    fig.suptitle(test, fontsize=16)
 
-subtitles = {0:'Full Size',
-             1:'Shrunk After',
-             2:'Small Size'}
-j = 0 
-for i in ax:
-    i.legend()
-    i.set_title(subtitles[j])   
-    i.set_xlabel('Time (Seconds)')
-    i.set_ylabel('Norm Value')
-    j = j + 1
+    subtitles = {0:'Full Size',
+                1:'Shrunk After',
+                2:'Small Size',
+                3:'Full Size'}
+    j = 0 
+
+    for i in ax:
+        i.legend()
+        i.set_title(subtitles[j])   
+        i.set_xlabel('Time (Seconds)')
+        i.set_ylabel('Norm Value')
+
+        # Plot Boundary Lines
+        i.axvline(126)
+        i.axvline(160)
+        i.axvline(226)
+        i.axvline(231)
+
+        j = j + 1
+        print('hi')
+
+# endregion
+
+# region Interpolated Plot
+if interp_plots is True:   
+    fig2, axis2 = plt.subplots(2, sharex=True)
+
+    # Set up interpollation type
+    interp_kinds = [None, 'slinear','quadratic', 'zero']
+    #[None,'linear', 'nearest', 'nearest-up', 'zero',
+     #   'slinear', 'quadratic', 'cubic', 'previous', 'next']
+    noklust = triple_data['No Clustering'][-1]
+    x_data = noklust['Time(ms)']
+    y_data = noklust[ykey]
+
+    if type(axis2) == np.ndarray:
+        axis2s = axis2
+    else:
+        axis2s = [axis2]
+
+    jk = 0
+    yscales = ['linear','log']
+
+    for axnumber in axis2s:
+        for ikind in interp_kinds:
+            
+            if ikind is None: 
+                y = y_data
+                x = x_data
+                lw = 0.25
+                ls = 'solid'
+            else:
+                interpolation_model = interp1d(x_data, y_data,kind=ikind)
+                x = np.linspace(x_data.min(),x_data.max(), int(x_data.size * 0.05))
+                y = interpolation_model(x)
+                lw=1
+                ls = 'dashed'
+
+            
+            axnumber.plot(x/1000,y,
+                            label=f"Interpolated: {ikind}",
+                            linewidth=lw, linestyle=ls)
+
+        i = axnumber
+        i.legend()
+        i.set_title('Interpollated No Clustering')   
+        i.set_xlabel('Time (Seconds)')
+        i.set_ylabel('Norm Value')
+
+        # Plot Boundary Lines
+        for vl in [126, 160, 226, 231]:
+            i.axvline(vl, linewidth=0.5, color='black', linestyle='dotted')
+        
+
+        # Plot Horizontal lines to find flagging conditions
+        for hl in [1,0.5,0.25,0.01]:
+            i.axhline(hl, linewidth=0.5, color='black', linestyle='dotted')
+        
+        i.set_yscale(yscales[jk])
+
+        jk = jk + 1
+
+# endregion

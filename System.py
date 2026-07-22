@@ -28,10 +28,12 @@ Can be called using startStation() if using a seperate script.
 from YooperCam import YooperCam
 from Sensors.barom_therm_data_collection import temp_n_pres
 from Sensors.mag_data import mag_data
+import filemanager as fman
 
 # support functions
 import pyzwoasi as pza
 import os
+from os import path
 import sys
 import toml
 import csv
@@ -42,28 +44,39 @@ import numpy as np
 from ischedule import schedule, run_pending
 from multiprocessing import Process
 
-
-### Load Config Files
+# region Initialize Variables
+# Get working directory and repository directory
 wkdir = os.getcwd()
+station_dir = path.dirname(path.realpath(__file__))
+
+# Load Config Files
 config_file_path = wkdir + "/.YooperConfig.toml"
 yoop_config = toml.load(config_file_path)
 
-# ### Write Storage Locations
+# Get Storage Locations
 img_folder_path = wkdir + yoop_config['paths']['Camera_Images_Collection']    
 # img_info_path = yoop_config['paths']['Camera_Info_File'] 
 sensor_file_path = wkdir + yoop_config['paths']['Sensor_Data_Folder']
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
 sensor_file = sensor_file_path + "testing.csv"
 
-# ### initializes scheduling
+# Initialize System Variables
+exposure_time = 30
+
+# initializes scheduling                                                    #! Implement for Uploading
 # schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
 # schedule.every().day.at("16:00").do(upload_data)  # upload hdf5 file at 4pm
 # schedule.every().day.at("08:00").do(cam_off)  # turn camera off after 8am
 # schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
 
+# endregion
+
 ### Define Camera functions
 def startCam():
-    'Handles opening camera returnng the YooperCam object'
+    '''
+    Handle opening the camera, returning the YooperCam object.
+    Designed to handle common errors such as a closed camera.
+    '''
 
     # initialize camera
     YCamera = YooperCam(0)
@@ -114,22 +127,40 @@ def startCam():
 
 def captureImage(expSec=30):
     '''
-    Takes all sky images and save them. Writes data about the camera.
+    Capture an all sky image, write to storage location, 
+    write data about camera, and runs a check for aurora.
+
+    Parameters
+    ----------
+    expSec: int
+        The camera exposure time in seconds. This is for adjustment within 
+        this script
     '''
 
+    # Ensure the YooperCam object is global to retain changes
     global ycam
     
-    print("Start Image capturing loop")
+    print("Start Image capturing loop")                                     # log debug 
     
-    try:
-        ycam.shot(save=True, exposure=expSec)
-        time.sleep(1)
+    # Take photo
+    try: 
+        sky_img = ycam.shot(return_img=True, exposure=expSec)
     except pza.pyzwoasi.ASIError:
-        print("Failed to get image, trying again.")
+        # todo add error handling
+        print("Failed to get image, trying again.")                         ## log warning/error
         # ycam.writeData()
         # add a wait, #? Should this be here or a class? Hand in hand with changing exposure.
+        return # ! something
+
+    # Run aurora check/screen
+    aurora_flag = ycam.isAurora(sky_img)
+    # todo Add exposure frequency or capture delay based on this
+    # todo resize image??
     
-    print('Capturing Finished')
+
+
+
+    print('Capturing Finished')                                                 ## log debug/info
 
 def getSensorData():
     '''
@@ -149,10 +180,10 @@ def getSensorData():
             cwrite = csv.DictWriter(cfile,fieldnames=sensor_dict.keys())
             cwrite.writerow(sensor_dict)
         
-        # print #! should log
+        # print                                                                 # log info/higher info???
         print(sensor_dict)
 
-        # Set data reading rate
+        # Set sensor collection frequency
         time.sleep(5)
 
 def _readSensors():
@@ -161,14 +192,77 @@ def _readSensors():
     TODO: GPS
     '''
 
+    # Moldwin Magnetometer Data 
     mag = mag_data()
+
+    # Adafruit Thermometer and Barometer
     temp, pres = temp_n_pres()
+
+    # GPS code is not complete
     gps = None  # todo complete gps code
 
+    # log each individually here?
     return mag, pres, temp, gps
 
+def uploadData(move=True, path=path.join(station_dir,'Data'), folder='',
+                doUpload=False, flag=''):
+    '''
+    Upload from the station to a setup remote drive using rclone.
+    TODO: Support uploading when storage is getting full.
+
+    Parameters
+    ----------
+    move: bool
+        If true, rclone will copy the files to drive and delete
+        them automatically after a succesful upload. Otherwise, it will 
+        only copy files.
+    path: str
+        Path to the files that need to be updated. Uploads everything in
+        the 'Data' directory by default.
+    folder: str
+        Folder name on remote drive where data will be uploaded.
+    doUpload: bool
+        If true, upload without checking for any flags/parameters.
+        This is intended for end-of-day uploads.
+    '''
+
+    # Get storage information
+    station_Gb, total_used, station_used = fman.dataSize(station_dir)
+
+    # Check if a flag is met # todo Figure out if this is necessary
+    if doUpload is False:
+        #! log that a flag was checked
+        if flag == '':
+            print(f"GB used: {station_Gb}\nStorage used: {station_used}%\n"
+                f"Total storage used: {total_used}%")
+        elif flag.lower() in  ['gb','station gb', 'data size', 'size']:
+            pass
+
+
+    if doUpload is True:
+        fman.rclone(move=move, path=path, folder=folder)
+
+
+    # todo Function
+
+def updateCaptureRate():
+    '''
+    Update the frequency of photos capture by the station.
+    '''
+    global exposure_time
+
+    
+
+    pass
+
 def startStation():
-    'Start data collection'
+    '''
+    Run the station starting the process of collecting sensors data and
+    capturing all sky images. 
+
+    TODO: Is it necessary to stop collection to upload? This is a serious issue 
+        if necessary at night. Data should not get too large in a single night. 
+    '''
     # Initialize Camera Object
     global ycam
     ycam = startCam()
@@ -185,9 +279,11 @@ def startStation():
             captureImage(expSec=1)
             time.sleep(1)    
     except KeyboardInterrupt:
+        # Stop the sensors if manually killed
         sensors_proc.kill()
         print("Closing program")
-    
+
+    # wait for the sensors to finish their loop before finishing 
     sensors_proc.join()
     # todo Log start time
 
