@@ -304,14 +304,64 @@ class auraCheck():
         g1_p = g_p * 1.0
         b1_p = b_p * 1.0
         
-        def maskCheck():
-            mask = img[img]
+        def maskCheck(img_cur, img_pre):
 
+            global masked_img_cur, masked_img_pre
+
+            # Variables
+            ratio_low = 0.9
+            ratio_high = 1.3
+            dom_percent = 0.95
+
+            # Get Green/Blue Ratio
+            ratGB_cur = img_cur[:, :, 1]/img_cur[:, :, 2]    
+            ratGB_pre = img_pre[:, :, 1]/img_pre[:, :, 2]    
+
+            # Get Green/Red Ration
+            ratGR_cur = img_cur[:, :, 1]/img_cur[:, :, 0]    
+            ratGR_pre = img_pre[:, :, 1]/img_pre[:, :, 0]
+
+            # Get Neutral Masks
+            mask_neutral_cur = ((ratio_low <= ratGB_cur) & (ratGB_cur <= ratio_high) 
+                                & (ratio_low <= ratGR_cur) & (ratGR_cur <= ratio_high))
+            mask_neutral_pre = ((ratio_low <= ratGB_pre) & (ratGB_pre <= ratio_high) 
+                                & (ratio_low <= ratGR_pre) & (ratGR_pre <= ratio_high))    
+
+            # Find Where green is dominant
+            mask_dom_green_pre = ((dom_percent * img_pre[:, :, 1] > img_pre[:, :, 2])
+                                | (dom_percent * img_pre[:, :, 1] > img_pre[:, :, 0]))
+            mask_dom_green_cur = ((dom_percent * img_cur[:, :, 1] > img_cur[:, :, 2])
+                                | (dom_percent * img_cur[:, :, 1] > img_cur[:, :, 0]))
+
+            # Create Mask where green is dominant and the color is not neutral
+            mask_very_green_cur = (~mask_neutral_cur & mask_dom_green_cur)
+            mask_very_green_pre = (~mask_neutral_pre & mask_dom_green_pre)
+
+            # Make masks 3D
+            mask_very_green_3D_pre = np.repeat(mask_very_green_pre[:, :, np.newaxis], 
+                                            3, axis=2)
+            mask_very_green_3D_cur = np.repeat(mask_very_green_cur[:, :, np.newaxis], 
+                                            3, axis=2)
+
+            # Apply masks to images
+            masked_img_cur = img_cur * mask_very_green_3D_cur
+            masked_img_pre = img_pre * mask_very_green_3D_pre
+
+            # Calculate Norm and MSE
+            mask_img_diff = masked_img_cur-masked_img_pre
+            rmse = np.sqrt(np.mean((mask_img_diff)**2))
+            norm_of_masked = np.linalg.norm(mask_img_diff)  # Returns the normal vector
+            mse = float(np.mean(mask_img_diff**2))  # Use a threshold instead?
+
+            dictW['mask_mse'] = mse
+            dictW['mask_norm'] = norm_of_masked
+            dictW['mask_rmse'] = rmse
+
+            print(f"RMSE: {rmse}\nMSE: {mse}\nNorm: {norm_of_masked}")
 
         def maskCheck_old():
             # Credit:
             # https://github.com/joncooper65/raspberry-aurora/blob/master/detect.py
-            global dicty
             ### Create masks from current image
             log.log(DEBUG2,"maskedCheck in Progress")
             # Blue/Green ratio
@@ -347,8 +397,8 @@ class auraCheck():
             mask_img_diff = masked_img - masked_pre
             norm_of_diff = np.linalg.norm(mask_img_diff)  # Returns the normal vector
             mse = float(np.mean(mask_img_diff**2))  # Use a threshold instead?
-            dictW['mask_mse'] = mse
-            dictW['mask_norm'] = norm_of_diff
+            dictW['old_mask_mse'] = mse
+            dictW['old_mask_norm'] = norm_of_diff
             return norm_of_diff, mse
 
         def netColorCheck():
@@ -984,12 +1034,7 @@ if __name__ == "__main__":
 
     # Tests to do
     x.tests['No Clustering'] = {'doKCluster':False,'_kValue':0}
-    x.tests['Kluster 2']     = {'doKCluster':True ,'_kValue':2}
-    x.tests['Kluster 3']     = {'doKCluster':True ,'_kValue':3}
-    x.tests['Kluster 4']     = {'doKCluster':True ,'_kValue':4}
-    x.tests['Kluster 6']     = {'doKCluster':True ,'_kValue':6}
-    x.tests['Kluster 8']     = {'doKCluster':True ,'_kValue':8}
-    x.tests['Kluster 10']    = {'doKCluster':True ,'_kValue':10}
+    
 
     
     x.fromVideo(video_file=files2check, efficient_testing=True,
