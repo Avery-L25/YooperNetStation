@@ -3,6 +3,11 @@
 import cv2 as cv
 import numpy as np
 import os
+from os import path # , listdir
+from os.path import  join # isfile,  getsize, isdir
+import h5py
+import glob
+import toml
 import csv
 import toml
 from time import sleep, time
@@ -15,64 +20,139 @@ from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import matplotlib.pyplot as plt; plt.ion()
 import pandas as pd
 
+# region Input
+parser = ArgumentParser(description=__doc__,
+                        formatter_class=RawDescriptionHelpFormatter)
+parser.add_argument('-l','--loglevel', type=int, default=25,
+                     help='Logger level for debugging' +
+                    '10 for max, 21 for high, 30 for warnings/errors.')
+parser.add_argument("-o", "--outfile", default='', help="Set " +
+                    "output file name. Defaults to generic csv from datetime.")
+parser.add_argument("-i", "--infile", default='', help="Assign file to read.")
+
+# Handle arguments:
+args = parser.parse_args()
+
+logging_value = args.loglevel
+outfile = args.outfile
+infile = args.infile
+# endregion
 
 
-def threeDimMasked(image, mask):
+def threeDimMasked(dicty, key, image, mask) -> dict:
     # Make masks 3D
     mask3d = np.repeat(mask[:, :, np.newaxis], 
                                         3, axis=2)
 
     # Apply masks to images
     masked_image = image * mask3d
-    return masked_image
+    dicty['Images'][key] = masked_image
+    dicty['Masks'][key] = mask3d
+    return dicty
 
 
 def maskSingleImage(image) -> dict:
     # Start empty dictionary
     dicty = {}
-    dicty['Raw Image'] = image
-    
+    dicty['Images'] = {}
+    dicty['Masks'] = {}
+    dicty['Images']['Raw Image'] = image
+    dicty['Masks']['Raw Image'] = np.zeros(image.shape)
+
+    # Make img an unsigned 16-bit integer to handle 0 errors
+    img16 = image.astype('uint16')
+
     # Variables
     ratio_low = 0.9
     ratio_high = 1.3
     dom_percent = 0.95
 
+    # region Dominant Percentage
+    # Find Where green is dominant
+    mask_dom_green = ((dom_percent * img16[:, :, 1] > img16[:, :, 2])
+                      | (dom_percent * img16[:, :, 1] > img16[:, :, 0]))
+    dicty = threeDimMasked(dicty, 'Dominat Percent Green Mask', image, mask_dom_green)
+
+    # endregion
+
+    # region Neutral Green Top
     # Get Green/Blue Ratio/Mask
-    ratGB = image[:, :, 1]/image[:, :, 2]    
+    ratGB = img16[:, :, 1]/img16[:, :, 2]    
     maskGB_neutral = ((ratio_low <= ratGB) & (ratGB <= ratio_high))
-    dicty['GrBl Neutral Masked'] = threeDimMasked(image, maskGB_neutral)
+    dicty = threeDimMasked(dicty,'GrBl Neutral Masked',image, maskGB_neutral)
 
     # Get Green/Red Ration
-    ratGR = image[:, :, 1]/image[:, :, 0]    
+    ratGR = img16[:, :, 1]/img16[:, :, 0]    
     maskGR_neutral = ((ratio_low <= ratGR) & (ratGR <= ratio_high))
-    dicty['GrR Neutral Masked'] = threeDimMasked(image, maskGR_neutral)
+    dicty = threeDimMasked(dicty,'GrR Neutral Masked',image, maskGR_neutral)
 
     # Get Neutral Masks
-    mask_neutral = ((ratio_low <= ratGB) & (ratGB <= ratio_high)
+    mask_Gtop_neutral = ((ratio_low <= ratGB) & (ratGB <= ratio_high)
                         & (ratio_low <= ratGR) & (ratGR <= ratio_high))
-    dicty['Total Neutral Masked'] = threeDimMasked(image,mask_neutral)
-    dicty['Inverse Neutral Masked'] = threeDimMasked(image, ~mask_neutral)
-
-    # Find Where green is dominant
-    mask_dom_green = ((dom_percent * image[:, :, 1] > image[:, :, 2])
-                      | (dom_percent * image[:, :, 1] > image[:, :, 0]))
-    dicty['Dominat Percent Green Mask'] = threeDimMasked(image, mask_dom_green)
+    dicty = threeDimMasked(dicty,'Total Neutral Gt Masked',image,mask_Gtop_neutral)
+    dicty = threeDimMasked(dicty,'Inverse Neutral Gt Masked',image, ~mask_Gtop_neutral)
 
     # Create Mask where green is dominant and the color is not neutral
-    mask_inv_very_green = (~mask_neutral & mask_dom_green)
-    mask_very_green = (mask_neutral & mask_dom_green)
-    dicty['Regular Very Green Mask'] = threeDimMasked(image, mask_very_green)
-    dicty['Inverse Very Green Mask'] = threeDimMasked(image, mask_inv_very_green)
+    mask_inv_very_green = (~mask_Gtop_neutral & mask_dom_green)
+    mask_very_green = (mask_Gtop_neutral & mask_dom_green)
+    dicty = threeDimMasked(dicty,'Regular Top Very Green Mask',image, mask_very_green)
+    dicty = threeDimMasked(dicty,'Inverse Top Very Green Mask',image, mask_inv_very_green)
+    # endregion
 
-    # Green 
-    img16 = image.astype('uint16')
+    # region Neutral Green Bottom
+    # Get Blue/Green Ratio/Mask
+    ratBG = img16[:, :, 2]/img16[:, :, 1]    
+    maskBG_neutral = ((ratio_low <= ratBG) & (ratBG <= ratio_high))
+    dicty = threeDimMasked(dicty,'BG Neutral Masked',image, maskBG_neutral)
+
+    # Get Red/Green Ration
+    ratRG = img16[:, :, 0]/img16[:, :, 1]    
+    maskRG_neutral = ((ratio_low <= ratRG) & (ratRG <= ratio_high))
+    dicty = threeDimMasked(dicty,'RG Neutral Masked',image, maskRG_neutral)
+
+    # Get Neutral Masks
+    mask_Gbot_neutral = ((ratio_low <= ratBG) & (ratBG <= ratio_high)
+                        & (ratio_low <= ratRG) & (ratRG <= ratio_high))
+    dicty = threeDimMasked(dicty,'Total Neutral Gbot Masked',image,mask_Gbot_neutral)
+    dicty = threeDimMasked(dicty,'Inverse Neutral Gbot Masked',image, ~mask_Gbot_neutral)
+
+    # Create Mask where green is dominant and the color is not neutral
+    mask_inv_very_bot_green = (~mask_Gbot_neutral & mask_dom_green)
+    mask_very_bot_green = (mask_Gbot_neutral & mask_dom_green)
+    dicty = threeDimMasked(dicty,'Regular Bottom Very Green Mask',image, mask_very_bot_green)
+    dicty = threeDimMasked(dicty,'Inverse Bottom Very Green Mask',image, mask_inv_very_bot_green)
+    # endregion
+
+    # region Norm Masks
     sum_squares_rgb = (np.square(img16[:,:,0]) + np.square(img16[:,:,1])
                         + np.square(img16[:,:,2]))
-    been_greened = img16[:,:,1] / np.sqrt(sum_squares_rgb)
-    dan_gre_mask = been_greened > (been_greened.mean())
-    dicty['Dan 50% Green Masked'] = threeDimMasked(image, dan_gre_mask)
-    dicty['Dan 50% NOT Green Masked'] = threeDimMasked(image, ~dan_gre_mask)
+    # If dividing by 0, it is 0/0
+    sum_squares_rgb[sum_squares_rgb == 0] = 1
 
+    # Green
+    norm_g_rgb = img16[:,:,1] / np.sqrt(sum_squares_rgb)
+    mask_g_rgb = norm_g_rgb > (norm_g_rgb.mean())
+    dicty = threeDimMasked(dicty,'Norm 50% Green Masked',image, mask_g_rgb)
+    dicty = threeDimMasked(dicty,'Norm 50% NOT Green Masked',image, ~mask_g_rgb)
+    # Red
+    norm_r_rgb = img16[:,:,0] / np.sqrt(sum_squares_rgb)
+    mask_r_rgb = norm_r_rgb > (norm_r_rgb.mean())
+    dicty = threeDimMasked(dicty,'Norm 50% Red Masked',image, mask_r_rgb)
+    dicty = threeDimMasked(dicty,'Norm 50% NOT Red Masked',image, ~mask_r_rgb)
+    # Blue
+    norm_b_rgb = img16[:,:,2] / np.sqrt(sum_squares_rgb)
+    mask_b_rgb = norm_b_rgb > (norm_b_rgb.mean())
+    dicty = threeDimMasked(dicty,'Norm 50% Blue Masked',image, mask_b_rgb)
+    dicty = threeDimMasked(dicty,'Norm 50% NOT Blue Masked',image, ~mask_b_rgb)
+
+    # endregion
+
+    # region Trial Combos
+    # 
+    gr_not_red = mask_g_rgb & ~mask_r_rgb
+    dicty = threeDimMasked(dicty,'Norm mean>Green and mean<Red',image, gr_not_red)
+
+    # endregion
     return dicty
 
 
@@ -187,6 +267,7 @@ def displayImg(img_dict):
             break
     print('destroying windows')
     cv.destroyAllWindows()
+
 
 def fromVideo(self, video_file, efficient_testing=False, vis_comp=False, filename=''):
     '''
@@ -383,5 +464,67 @@ def fromVideo(self, video_file, efficient_testing=False, vis_comp=False, filenam
         cv.destroyAllWindows()
 
 
-img = cv.imread('Data/5mins.png')
-img_dict = maskSingleImage(img)
+def textOverlay(img, text):
+    shape = img.shape
+    offset = 0.90
+    font_scale = 1 + shape[1] // 500
+    font_bold = 3 + shape[1] // 1250
+    name_img = cv.putText(img, text, (int(shape[1]*(1-offset)),
+                          int(shape[0]*offset)), cv.FONT_HERSHEY_SIMPLEX,
+                          font_scale, (255, 255, 255), font_bold,)
+    return name_img
+
+
+def stackImages(img_dict, width=0):
+    keys = img_dict.keys()
+    list(keys)
+    keys = list(keys)
+    if width == 0:
+        width = int(np.round(np.sqrt(len(keys))))
+    
+    stack = []
+
+    while len(keys) != 0:
+        current_row = []
+        for i in range(0, width):
+            if len(keys) == 0:
+                current_row.append(np.zeros(img_dict[k].shape))
+            else:
+                k = keys[0]
+                cur_img = textOverlay(img_dict[k], k)
+                current_row.append(cur_img)
+                keys.remove(k)
+        np.hstack(current_row)
+        stack.append(np.hstack(current_row))
+
+    full = np.vstack(stack)
+    return full
+
+
+path2photos = 'Data/Masking'
+pathList = os.listdir(path2photos)
+fileOptions = [x.split('.')[0] for x in pathList]
+if infile == '':
+    photo2find = '5mins'
+else:
+    photo2find = infile
+photoIndex = fileOptions.index(photo2find)
+photo2read = join(path2photos,pathList[photoIndex])
+
+
+img = cv.imread(photo2read)
+
+full_dictionary = maskSingleImage(img)
+mask_dict = full_dictionary['Masks']
+img_dict = full_dictionary['Images']
+
+grid_img = stackImages(img_dict)
+
+img_width = 4000
+aspect = grid_img.shape[0]/grid_img.shape[1]
+img_height = int(img_width * aspect)
+
+small_grid = cv.resize(grid_img, (img_width, img_height))
+
+cv.imwrite(f'MaskGrid.png', small_grid)
+cv.imwrite(f'MaskGrid_{photo2find}.png', small_grid)
