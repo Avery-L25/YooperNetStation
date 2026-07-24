@@ -29,13 +29,14 @@ parser.add_argument('-l','--loglevel', type=int, default=25,
                     '10 for max, 21 for high, 30 for warnings/errors.')
 parser.add_argument("-o", "--outfile", default='', help="Set " +
                     "output file name. Defaults to generic csv from datetime.")
-parser.add_argument("-i", "--infile", help="Assign file to read.")
+parser.add_argument("-i", "--infile", default='', help="Assign file to read.")
 
 # Handle arguments:
 args = parser.parse_args()
 
 logging_value = args.loglevel
 outfile = args.outfile
+infile = args.infile
 
 logging.basicConfig()
 DEBUG2 = 11
@@ -75,12 +76,18 @@ class auraCheck():
         self.file = None # dt.now().strftime("Data/test_files/check_data_%Y-%m-%d_%H-%M-%S.csv")
         self.auraDict = {}
         self._fileHasHeader = False
-        
+
         # K clustering do
         self.doKCluster = False
         self._kValue = 4
         self._kSmall = 0  # 0==Reg, 1==Reg->Shrink, 2==Small
-        
+
+        # Make dummy 
+        self.newCur = np.zeros((1,1,1))
+        self.newPre= np.zeros((1,1,1))
+        self.newMaskCur= np.zeros((1,1,1))
+        self.newMaskPre= np.zeros((1,1,1))
+
         self.tests = {'No Clustering':{'doKCluster':False,'_kValue':0}}
         self.auraDict['Test Name'] = 'No Clustering'
         self.auraDict['K Value'] = 0
@@ -91,7 +98,7 @@ class auraCheck():
 
     def _resetAuroraImages(self,size) -> None:
         '''
-        Sets up default testing images for aurora detection, takes a size 
+        Sets up default testing images for aurora detection, takes a size
         assuming image is a square for an all-sky image
         '''
         for image_detecting_vars in ['img','pre','masked','premask']:
@@ -109,18 +116,18 @@ class auraCheck():
             The working image/frame to be checked against.
         k : str
             The key from the testing dictionary, should be the name of the
-            current test.        
+            current test.
         v : str
             The values from the testing dictionary, should contain any testing
             parameters.
-        '''    
-        
+        '''
+
         log.log(DATA,f"Running test {k} with params {v}\n\n\n")
         curTestDict = self.auraDict.copy()
         curTestDict['Test Name'] = k
         curTestDict['K Value'] = v['_kValue']
         self._kValue = v['_kValue']
-        
+
         self.startTime = dt.now()
         # Attempt to get previous images, otherwise write as empty
         try:
@@ -140,7 +147,7 @@ class auraCheck():
 
             # Shrunk klustered images
             img1 = cv.resize(img0,[int(img0.shape[0]/4),int(img0.shape[1]/4)])
-            log.debug(f"isAurora on img1 test {k} with params {v} \n\n\n")           
+            log.debug(f"isAurora on img1 test {k} with params {v} \n\n\n")
             ctd1 = curTestDict.copy()
             ctd1['Cluster Method'] = 1
             x = self.isAurora(img1, ctd1, preDict['img1'])
@@ -161,14 +168,14 @@ class auraCheck():
             # Do a standard test
             log.debug(f"isAurora on default image test {k} with params {v} \n\n\n")
             x = self.isAurora(img)
-        
+
         return None
 
     def doTests(self, image):
         '''
         Method to efficiently perform multiple analysis on the same data.
         Works through the tests defined by aura.tests.
-        
+
         The tests are held in a dictionary with the format
         aura.tests['No Clustering']  = {'doKCluster':False,'_kValue':0}}
 
@@ -176,19 +183,19 @@ class auraCheck():
         ----------
         image : numpy array
             The working image/frame to be checked against.
-       
+
         '''
         tests = self.tests
-        
+
         # Incase used without doing tests
         if tests is None:
             return self.isAurora(image)
-        
+
         # Kclustering is handled in this test instead
-        self.doKCluster = False 
+        self.doKCluster = False
 
         # Function to run a single test
-        
+
         if self._doMultiProc is True:
             # Create a pool of workers to process the tests
             p = Pool(len(tests.items()))
@@ -196,9 +203,9 @@ class auraCheck():
             items = []
             for key, val in tests.items():
                 items.append((image, key, val))
-            
+
             p.starmap(self.runTest, items)
-            
+
             p.close()
             p.join()
             # Make Process for each part of a test instead
@@ -231,15 +238,15 @@ class auraCheck():
         NOTE: If instead of inputing an image, it is assigned directly the
         compared \'pre\' image will not be the last camera image.
 
-        TODO: Fix pre-image assignment. We want to be able 
+        TODO: Fix pre-image assignment. We want to be able
         '''
         start_proc = dt.now()  # Get start of processing time
         log.log(HIGH_DEBUG,"Starting to check for aurora")
-        
+
         # Ensure there is an image to work with
         if image is None:
             log.warning("Image not provided, cannot check for aurora")
-        
+
         img = image
 
         # Initialize dict to write
@@ -287,7 +294,7 @@ class auraCheck():
         if self.doKCluster is True:
             log.log(HIGH_DEBUG,"Clustering from isAurora\n")
             img = self.kClust(image, Display=False)
-        
+
         ### get rgb components as floats
 
         b, g, r = cv.split(img)
@@ -303,7 +310,7 @@ class auraCheck():
         r1_p = r_p * 1.0
         g1_p = g_p * 1.0
         b1_p = b_p * 1.0
-        
+
         def maskCheck(img_cur, img_pre):
 
             global masked_img_cur, masked_img_pre
@@ -314,18 +321,18 @@ class auraCheck():
             dom_percent = 0.95
 
             # Get Green/Blue Ratio
-            ratGB_cur = img_cur[:, :, 1]/img_cur[:, :, 2]    
-            ratGB_pre = img_pre[:, :, 1]/img_pre[:, :, 2]    
+            ratGB_cur = img_cur[:, :, 1]/img_cur[:, :, 2]
+            ratGB_pre = img_pre[:, :, 1]/img_pre[:, :, 2]
 
             # Get Green/Red Ration
-            ratGR_cur = img_cur[:, :, 1]/img_cur[:, :, 0]    
+            ratGR_cur = img_cur[:, :, 1]/img_cur[:, :, 0]
             ratGR_pre = img_pre[:, :, 1]/img_pre[:, :, 0]
 
             # Get Neutral Masks
-            mask_neutral_cur = ((ratio_low <= ratGB_cur) & (ratGB_cur <= ratio_high) 
+            mask_neutral_cur = ((ratio_low <= ratGB_cur) & (ratGB_cur <= ratio_high)
                                 & (ratio_low <= ratGR_cur) & (ratGR_cur <= ratio_high))
-            mask_neutral_pre = ((ratio_low <= ratGB_pre) & (ratGB_pre <= ratio_high) 
-                                & (ratio_low <= ratGR_pre) & (ratGR_pre <= ratio_high))    
+            mask_neutral_pre = ((ratio_low <= ratGB_pre) & (ratGB_pre <= ratio_high)
+                                & (ratio_low <= ratGR_pre) & (ratGR_pre <= ratio_high))
 
             # Find Where green is dominant
             mask_dom_green_pre = ((dom_percent * img_pre[:, :, 1] > img_pre[:, :, 2])
@@ -338,14 +345,20 @@ class auraCheck():
             mask_very_green_pre = (~mask_neutral_pre & mask_dom_green_pre)
 
             # Make masks 3D
-            mask_very_green_3D_pre = np.repeat(mask_very_green_pre[:, :, np.newaxis], 
+            mask_very_green_3D_pre = np.repeat(mask_very_green_pre[:, :, np.newaxis],
                                             3, axis=2)
-            mask_very_green_3D_cur = np.repeat(mask_very_green_cur[:, :, np.newaxis], 
+            mask_very_green_3D_cur = np.repeat(mask_very_green_cur[:, :, np.newaxis],
                                             3, axis=2)
 
             # Apply masks to images
             masked_img_cur = img_cur * mask_very_green_3D_cur
             masked_img_pre = img_pre * mask_very_green_3D_pre
+
+            # Temporarily assign to dummy properties
+            self.newCur = img_cur
+            self.newPre = img_pre
+            self.newMaskCur = masked_img_cur
+            self.newMaskPre = masked_img_pre
 
             # Calculate Norm and MSE
             mask_img_diff = masked_img_cur-masked_img_pre
@@ -366,7 +379,7 @@ class auraCheck():
             log.log(DEBUG2,"maskedCheck in Progress")
             # Blue/Green ratio
             gbratio = cv.divide(b1, g1)  #? blue / green
-            maskgbratio = cv.inRange(gbratio, 0.9, 1.3)  #? any cell with a b/g ratio between 0.9 and 1.3 is set to 255 
+            maskgbratio = cv.inRange(gbratio, 0.9, 1.3)  #? any cell with a b/g ratio between 0.9 and 1.3 is set to 255
 
             # Red/Green ratio
             grratio = cv.divide(r1, g1)  #! red / green
@@ -409,7 +422,7 @@ class auraCheck():
             log.info(f"r ({r.sum()}) - r_p({r_p.sum()}) = dr ({dr})")
             dg = (g - g_p).sum() / g.size
             db = (b - b_p).sum() / b.size
-            
+
             # Check mathematically
             r2b = dr/db
             g2b = dg/db
@@ -423,12 +436,10 @@ class auraCheck():
 
             return color_sums
 
-       
-
-
-        mask_norm, mask_mse = maskCheck()
+        maskCheck(img, pre)
+        mask_norm, mask_mse = maskCheck_old()
         color_sums = netColorCheck()
-                 
+
         log.info(f"mask_norm = {mask_norm} and mask_mse = {mask_mse}")
         self._auroraFlag = bool(mask_norm)  # currently any difference in the 'very green' region will be marked as a potential aurora
 
@@ -457,12 +468,12 @@ class auraCheck():
 
         if type(img) is str:
             img = cv.imread(img)
-        
+
         if self._kSmall == 2:
             img = cv.resize(img, [int(img.shape[0]/4),int(img.shape[1]/4)])
-        
+
         Z = img.reshape((-1,3))
-        
+
         ## convert to np.float32
         Z = np.float32(Z)
 
@@ -481,13 +492,13 @@ class auraCheck():
         delta_time = finish - start
 
         # Do not display during image processing.
-        if Display is True:    
+        if Display is True:
             # Dont shrink image twice
             if self._kSmall == 2:
                 res3 = res2
             else:
                 res3 = cv.resize(res2, [int(res2.shape[0]/4),int(res2.shape[1]/4)])
-            
+
 
             cv.putText(img=res3, text=f"{delta_time}", org=(10, int(res3.shape[1]-15)),
                 fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
@@ -502,7 +513,7 @@ class auraCheck():
         if self._kSmall == 1:
             res1 = cv.resize(res2, [int(res2.shape[0]/4),int(res2.shape[1]/4)])
             return res1
-        
+
         return res2
 
     def write2CSV(self, dicty):
@@ -520,7 +531,7 @@ class auraCheck():
                         cwrite.writeheader()
                         self._fileHasHeader = True
             else:
-                self._fileHasHeader = True             
+                self._fileHasHeader = True
         else:
             pass
 
@@ -529,7 +540,7 @@ class auraCheck():
         checked = self.isAurora(frame)
         log.debug(f"AFTER isAurora is called with frame: {frame.shape}\n"
                 f"and checked : {checked}")
-    
+
         if checked:
             log.log(DEBUG2,f"checked is {checked}")
             mask_mse, mask_norm, color_sum = checked[:]
@@ -538,7 +549,7 @@ class auraCheck():
                     f": {round(mask_norm,2)}\nRed:{round(dr,3)}\nGreen:{round(dg,3)}\nBlue:{round(db,3)}")
         else:
             aur_txt = "No previous image, wait until next image"
-        
+
         txt_offset = cv.getTextSize(aur_txt,cv.FONT_HERSHEY_SIMPLEX,0.5,2)
         aur_txt = aur_txt.split('\n')
         x=0
@@ -547,13 +558,13 @@ class auraCheck():
             cv.putText(img=disp_frame, text=f"{i}", org=(10, int(disp_frame.shape[1]-15-x*1.25*txt_offset[0][1])),
             fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,color=(255, 255, 255), thickness=2,)
             x=x+1
-        
+
         return disp_frame
 
     def fromVideo(self, video_file, efficient_testing=False, vis_comp=False, filename=''):
         '''
         Reads a video files to analyze frame-by-frame.
-        
+
         '''
         # Read the video file
         cap = cv.VideoCapture(video_file)
@@ -562,6 +573,8 @@ class auraCheck():
         vcd['Time(ms)'] = cv.CAP_PROP_POS_MSEC
         vcd['Time(frames)'] = cv.CAP_PROP_POS_FRAMES
         total_frames  = cap.get(cv.CAP_PROP_FRAME_COUNT)
+        disp_h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+        disp_w = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
         # Ensure there is a file to save data too
         if filename == '':
             # If no file name provided, generate generic filename with date
@@ -569,15 +582,105 @@ class auraCheck():
         else:
             self.file = filename
 
-        # Begin frame by frame analysis
+        # Initialize Window for video feed
+        windowName = "Video Analysis"
+        four_windows =  True
+        cv.namedWindow(windowName)
+        shrink=2
+
+        # Show 4 images: current, previous, masked_cur, masked_pre
+        if four_windows is True:
+            # define new dimensions
+            disp_w = int(disp_w / shrink)
+            disp_h = int(disp_h / shrink)
+
+            # Get Display Positions
+            border_width = 40
+
+            def makePosArray(ul, dh, dw):
+                '''
+                ul is upper left corner of position
+                dw is the display width
+                dh is display heigth
+                
+                br is bottom right corner
+                
+                returns postion array:
+                [[ul_x, ul_y],
+                 [br_x, br_y]]
+                 '''
+                br = np.array(ul) + np.array((dw, dh))
+                return np.array([ul, br])
+            
+            pos1 = (border_width, border_width)
+            pos1 = makePosArray(pos1, disp_h, disp_w)
+
+            pos2 = (border_width, 2*border_width+disp_w)
+            pos2 = makePosArray(pos2, disp_h, disp_w)
+
+            pos3 = (2*border_width+disp_h, border_width)
+            pos3 = makePosArray(pos3, disp_h, disp_w)
+
+            pos4 = (2*border_width+disp_h, 2*border_width+disp_w)
+            pos4 = makePosArray(pos4, disp_h, disp_w)
+
+            # Get Display Dimensions
+            canvas_w = 2*disp_w + 3*border_width
+            canvas_h = 2*disp_h + 3*border_width
+
+            # Create Blank Canvas
+            disp_image = np.full((canvas_h, canvas_w, 3), 100, dtype=np.uint8)
+        else:
+            # Create Blank Image
+            disp_image = np.zeros((disp_h, disp_w, 3))
+
+        # region Live Functions
+        def make4Frames(disp_img, cur, pre, m_cur, m_pre):
+            '''
+            Make the display image. Write any text over image(s).
+            Will put activate the multiwindow view.
+            '''
+            
+            cur = cv.resize(cur, (disp_h, disp_w))
+            pre = cv.resize(pre, (disp_h, disp_w))
+            m_cur = cv.resize(m_cur, (disp_h, disp_w))
+            m_pre = cv.resize(m_pre, (disp_h, disp_w))
+            
+            def addImg(canvas, img, pos, txt):
+                '''
+                canvas: the display to write on
+                img: the image to write on canvas
+                pos: int, which position to put on
+                txt: string, what will title each image
+                
+                Writes the image and its titles
+                '''
+                try:
+                    canvas[pos[0, 0]:pos[1,0], pos[0,1]:pos[1, 1]] = img
+                    cv.putText(disp_image, txt, (pos[0, :]),
+                                cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2,)
+                except ValueError:
+                    
+                    pass
+                return canvas
+
+            # Write Image Names
+            disp_img = addImg(disp_image, cur, pos1, "Current Image")
+            disp_img = addImg(disp_image, pre, pos2, "Previous Image")
+            disp_img = addImg(disp_image, m_cur, pos3, "Current Mask")
+            disp_img = addImg(disp_image, m_pre, pos4, "Previous Mask")
+
+            return disp_img
+
         state = True
         log.log(HIGH_DEBUG,f"Video Capture status before: {cap.isOpened()}")
         while cap.isOpened():
-            
+
             if state:
                 # Get next frame
                 ret, frame = cap.read()
                 self.startTime = dt.now()
+
                 # if frame is read correctly ret is True
                 if not ret:
                     print("Can't receive frame (stream end?). Exiting ...")
@@ -585,8 +688,9 @@ class auraCheck():
                 else:
                     cur_frame = cap.get(cv.CAP_PROP_POS_FRAMES)
                     log.log(DATA,f"On frame {cur_frame} of {total_frames}")
+
                 # Get video properties
-                self.auraDict['Time(ms)']     = cap.get(cv.CAP_PROP_POS_MSEC)
+                self.auraDict['Time(ms)'] = cap.get(cv.CAP_PROP_POS_MSEC)
                 self.auraDict['Time(frames)'] = cap.get(cv.CAP_PROP_POS_FRAMES)
 
                 # Determine checking method
@@ -601,8 +705,13 @@ class auraCheck():
                             f"and checked : {checked}")
 
                 # should the image be display
-                if vis_comp is True:
-                    
+                if vis_comp is True and efficient_testing is False:
+
+                    if four_windows is True:
+                        display_image = make4Frames(disp_image, self.newCur,
+                                                    self.newPre,
+                                                    self.newMaskCur,
+                                                    self.newMaskPre)
                     # Check image
                     if checked:
                         log.log(DEBUG2,f"checked is {checked}")
@@ -612,7 +721,7 @@ class auraCheck():
                                 f": {round(mask_norm,2)}\nRed:{round(dr,3)}\nGreen:{round(dg,3)}\nBlue:{round(db,3)}")
                     else:
                         aur_txt = "No previous image, wait until next image"
-                    
+
                     txt_offset = cv.getTextSize(aur_txt,cv.FONT_HERSHEY_SIMPLEX,0.5,2)
                     aur_txt = aur_txt.split('\n')
                     x=0
@@ -623,19 +732,21 @@ class auraCheck():
                         x=x+1
 
 
+                    if four_windows is True:
+                        cv.imshow('windows', display_image)
+                    else:
+                        gray = cv.cvtColor(disp_frame, cv.COLOR_BGR2GRAY)
+                        cv.imshow('frame', disp_frame)
 
-                    gray = cv.cvtColor(disp_frame, cv.COLOR_BGR2GRAY)
-                    cv.imshow('frame', disp_frame)
-
-                    key_press = cv.waitKey(1) & 0xFF
+                    key_press = cv.waitKey(50) & 0xFF
                     if key_press == ord('q'):
                         log.info(f"Frame shape: {disp_frame.shape}")
 
                         break
-                    elif key_press == ord(' '): 
+                    elif key_press == ord(' '):
                         state = not state  # [space] for pause
                 self.endTime = dt.now()
-                self.deltaTime = self.endTime - self.startTime     
+                self.deltaTime = self.endTime - self.startTime
 
         # Stop video after loop
         self._endTime = dt.now()
@@ -649,13 +760,13 @@ class auraCheck():
         Test auroras from a series of photos given a directory.
         '''
         log.debug(f"starting the \'fromPhotos\' method with folder={folder}")
-        
+
         # Get a list of photos from the directory
         photos = self.dir2files(folder)
         photos.sort()
         num_photos = len(photos)
         log.info(f"there is {num_photos}")
-        
+
 
         # Ensure there is a file to write data too
         if filename == '':
@@ -665,7 +776,7 @@ class auraCheck():
 
         # Prepare display params
         disp_size = 800
-        border_width = 40 
+        border_width = 40
         windowName = "Testing Images"
 
         def makeImage(img):
@@ -731,12 +842,12 @@ class auraCheck():
                 checked = self.isAurora(cur)
                 log.debug(f"AFTER isAurora is called with frame: {cur.shape}\n"
                         f"and checked : {checked}")
-        
+
         if vis_comp:
             cv.waitKey(1)
             cv.destroyAllWindows()
             log.info("Windows destroyed")
-        
+
     def fromLive(self, ycam):
         '''
         Test auroras from a directory
@@ -758,7 +869,7 @@ class auraCheck():
                 if key_press == ord('q'): return 'quit'  # q for quit
                 if key_press == ord(' '): return 'pause' # [space] for pause
                 if key_press == ord('s'): return 'save' # [space] for pause
- 
+
         while True:
             log.info(f"This is photo {dt.now()}\n")
             self.auraDict['photo'] = dt.now().strftime("%d/%m/%Y, %H:%M:%S")
@@ -768,7 +879,7 @@ class auraCheck():
 
             display_img = self.putText(cur)
             disp_this = cv.resize(display_img,[int(display_img.shape[0]/4),int(display_img.shape[1]/4)])
-            if display is True: 
+            if display is True:
                 cv.imshow(windowName, disp_this)
             cv.waitKey(1)
 
@@ -804,7 +915,7 @@ class auraCheck():
             log.debug(f"\nr = {r}\nd = {d} \n\n\n f = {f}")
             if d == []:
                 d = ''
-            
+
             if f == []:
                 pass
             elif type(f) is list:
@@ -817,13 +928,13 @@ class auraCheck():
                 log.debug(file)
                 files.append(f)
         return files
-    
+
     def plotCSV(self, file='', avg_color=False):
         'Plot aurora checking data from csv file'
 
         # Declare global variables for external work
         global df, colors
-        
+
         # Get latest file if none provided
         if file == '':
             try:
@@ -872,8 +983,8 @@ class auraCheck():
         # plt.xlim(0,1000)
         def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle='solid'):
             dicts = {'df':df,'color':colors}
-            vals_dict ={'color'       : "black", 
-                        'linewidth'   : 0.5, 
+            vals_dict ={'color'       : "black",
+                        'linewidth'   : 0.5,
                         'linestyle'   :'solid'}
             if type(value) is str:
                 vals_dict['label'] = value
@@ -883,7 +994,7 @@ class auraCheck():
                         vals_dict[k] = cur_dict[value]
                     else:
                         pass
-                
+
                 try:
                     graphing_val = vals_dict.pop('df')
                 except KeyError:
@@ -892,7 +1003,7 @@ class auraCheck():
                 axes.plot(graphing_val, **vals_dict)
             else:
                 axes.plot(value, color=color, linewidth=linewidth, linestyle=linestyle, label='No name provided')
-            
+
             if twins is True:
                 axes.legend(loc='upper right')
             else:
@@ -900,7 +1011,7 @@ class auraCheck():
 
         # write data to plots side by side plots
         for l in [0,1]:
-            
+
             # ax[0,l].plot(df['mask_mse'],  color=colors['mask_mse'], linewidth=0.5)
             # ax0[l].plot( df['mask_norm'], color=colors['mask_norm'],linewidth=0.5)
             plotLine(ax[0,l], "mask_mse")
@@ -918,7 +1029,7 @@ class auraCheck():
             #     ax[1,l].plot(average_color_diff,     color="Black",    linewidth=0.5)
             plotLine(ax[2,l], 'd_green2red')
             plotLine(ax2[l], "mask_mse", twins=True)
-        
+
             # ax[2,l].plot(r2g,             color='navy',             linewidth=0.5)
             # ax2[l].plot( df['mask_mse'],  color=colors['mask_mse'], linewidth=0.5)
 
@@ -939,14 +1050,14 @@ class auraCheck():
             # for _, spine in grax.spines.items():
             #     spine.set_visible(False)
             # grax.tick_params(labelleft=False, labelbottom=False, left=False, right=False )
-            # # grax.        
+            # # grax.
             # grax.grid(axis="x")
 
 
 def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle='solid'):
         dicts = {'df':df,'color':colors}
-        vals_dict ={'color'       : "black", 
-                    'linewidth'   : 0.5, 
+        vals_dict ={'color'       : "black",
+                    'linewidth'   : 0.5,
                     'linestyle'   :'solid'}
         if type(value) is str:
             vals_dict['label'] = value
@@ -956,7 +1067,7 @@ def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle
                     vals_dict[k] = cur_dict[value]
                 else:
                     pass
-            
+
             try:
                 graphing_val = vals_dict.pop('df')
             except KeyError:
@@ -965,7 +1076,7 @@ def plotLine(axes, value, twins=False, color = "black", linewidth=0.5, linestyle
             axes.plot(graphing_val, **vals_dict)
         else:
             axes.plot(value, color=color, linewidth=linewidth, linestyle=linestyle, label='No name provided')
-        
+
         if twins is True:
             axes.legend(loc='upper right')
         else:
@@ -996,7 +1107,7 @@ def plotColorComparison(df):
                         hspace=0.2,
                         wspace=0.2)
     # plt.xlim(0,1000)
-    
+
 
     # write data to plots side by side plots
     plotLine(ax0[0], 'dRed')
@@ -1013,13 +1124,16 @@ def plotColorComparison(df):
 
 if __name__ == "__main__":
     x = auraCheck()
-    
+
     # File to analyze
-    files2check = 'Data/Videos/shortest.mp4' #'video_name.mp4'
-    
+    if infile == '':
+        files2check = 'Data/Videos/RabbitLake.mp4'
+    else:
+        files2check = infile
+
     # File to write
     if outfile == '':
-        file2write=dt.now().strftime(f"Nov3_25_gill_%m-%d_%H.csv")
+        file2write=dt.now().strftime(f"RabbitLake_%m-%d_%H.csv")
     else:
         if outfile.rpartition('.')[2] != 'csv':
             if outfile.count('.') != 0:
@@ -1034,8 +1148,8 @@ if __name__ == "__main__":
 
     # Tests to do
     x.tests['No Clustering'] = {'doKCluster':False,'_kValue':0}
-    
 
-    
-    x.fromVideo(video_file=files2check, efficient_testing=True,
-                filename=file2write)
+
+
+    x.fromVideo(video_file=files2check, efficient_testing=False,
+                filename=file2write, vis_comp=True)

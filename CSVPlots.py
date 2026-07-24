@@ -322,30 +322,30 @@ def getMoreCSVs(path_to_check):
 
 # Current Plotting Info
 kluster_plots = False
-interp_plots = True
+interp_plots = False
 xkey = 'Time(ms)'
 ykey = 'mask_mse'
-try:
-    if Data_Was_Collected is False:
-        df = getDF('Nov3_25_11pmTest.csv')
-        data_tests = splitBy(df, 'Test Name')
-        triple_data = {}
-        for k, v in data_tests.items():
-            vdata = splitBy(v, 'Cluster Method')
-            triple_data[k] = vdata
-    else:
-        pass
-except NameError:
-    print('Collecting data')
-    df = getDF('Nov3_25_11pmTest.csv')
-    data_tests = splitBy(df, 'Test Name')
-    triple_data = {}
-    for k, v in data_tests.items():
-        vdata = splitBy(v, 'Cluster Method')
-        triple_data[k] = vdata
+# try:
+#     if Data_Was_Collected is False:
+#         df = getDF('Nov3_25_newCheck.csv')
+#         data_tests = splitBy(df, 'Test Name')
+#         triple_data = {}
+#         for k, v in data_tests.items():
+#             vdata = splitBy(v, 'Cluster Method')
+#             triple_data[k] = vdata
+#     else:
+#         pass
+# except NameError:
+#     print('Collecting data')
+#     df = getDF('Nov3_25_11pmTest.csv')
+#     data_tests = splitBy(df, 'Test Name')
+#     triple_data = {}
+#     for k, v in data_tests.items():
+#         vdata = splitBy(v, 'Cluster Method')
+#         triple_data[k] = vdata
     
-    # Get main plot Data
-    Data_Was_Collected = True
+#     # Get main plot Data
+#     Data_Was_Collected = True
 
 # region Kluster Plots
 if kluster_plots is True:
@@ -481,3 +481,42 @@ if interp_plots is True:
         jk = jk + 1
 
 # endregion
+
+# region New Data
+filename_ = 'gillam.csv'
+df = getDF(f'Data/csv_files/{filename_}')
+fig, axN = plt.subplots(1, sharex=True)
+
+y_vars = ['mask_mse', 'old_mask_mse']
+x_data = df['Time(ms)']
+if type(axN) == np.ndarray:
+    axin = axN
+else:
+    axin = [axN]
+
+jk = 0
+yscales = ['linear','log']
+
+for axnumber in axin:
+    for yv in y_vars:
+        y_data = df[yv]
+        if yv.find('old') != -1: 
+            lw = .75
+            ls = 'solid'
+        else:
+            lw = 1
+            ls = 'dashed'
+        
+        axnumber.plot(x_data/1000, y_data,
+                      label=f"Data: {yv}",
+                      linewidth=lw, linestyle=ls)
+
+    i = axnumber
+    i.legend()
+    i.set_title(filename_)
+    i.set_xlabel('Time (Seconds)')
+    i.set_ylabel('MSE')
+
+    i.set_yscale(yscales[jk])
+
+    jk = jk + 1
