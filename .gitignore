@@ -233,3 +233,4 @@ Setup/Ref_Files
 *.env
 *.tar
 *.so*
+*.jpeg
