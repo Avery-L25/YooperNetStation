@@ -234,3 +234,5 @@ Setup/Ref_Files
 *.tar
 *.so*
 *.jpeg
+hostage.txt
+*.dat
