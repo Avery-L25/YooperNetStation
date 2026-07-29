@@ -79,7 +79,7 @@ def normMask(image='', dicty=''):
     means = []
     std1 = []
     std2 = []
-    
+
 
     # If dividing by 0, it is 0/0
     sum_squares_rgb[sum_squares_rgb == 0] = 1
@@ -95,7 +95,7 @@ def normMask(image='', dicty=''):
     # Blue
     norm_b_rgb = img_ref[:, :, 2] / np.sqrt(sum_squares_rgb)
     mask_b_rgb = norm_b_rgb > (norm_b_rgb.mean())
-    if (dicty != '') & (image != ''):
+    if (type(dicty) is not str) & (type(image) is not str):
         dicty = threeDimMasked(dicty, 'Norm >Mean Green', image,  mask_g_rgb)
         dicty = threeDimMasked(dicty, 'Norm <Mean Green', image, ~mask_g_rgb)
         dicty = threeDimMasked(dicty, 'Norm >Mean Red',   image,  mask_r_rgb)
@@ -288,28 +288,28 @@ def maskSingleImage(image) -> dict:
     # endregion
 
     # Norm Masks for rgb channels
-    dicty = normMask(image, dicty)
+    # dicty = normMask(image, dicty)
 
 
     # region Trial Combos
-    # Greater Green Mean Less Red Mean
-    gr_not_red = mask_g_rgb & ~mask_r_rgb
-    dicty = threeDimMasked(dicty, '>MeanG & <MeanR', image,
-                           gr_not_red)
+    # # Greater Green Mean Less Red Mean
+    # gr_not_red = mask_g_rgb & ~mask_r_rgb
+    # dicty = threeDimMasked(dicty, '>MeanG & <MeanR', image,
+    #                        gr_not_red)
 
-    # >MeanG & <MeanB and the opposite
-    gb_green = mask_g_rgb & ~mask_b_rgb
-    dicty = threeDimMasked(dicty, '>MeanG & <MeanB', image,
-                           gb_green)
-    gb_red = ~mask_g_rgb & mask_b_rgb
-    dicty = threeDimMasked(dicty, '<MeanG & >MeanB', image,
-                           gb_red)
-    # Combine
-    both_gr_from_gb = gb_green | gb_red
-    dicty = threeDimMasked(dicty, 'Green Blue Norm', image,
-                           both_gr_from_gb)
+    # # >MeanG & <MeanB and the opposite
+    # gb_green = mask_g_rgb & ~mask_b_rgb
+    # dicty = threeDimMasked(dicty, '>MeanG & <MeanB', image,
+    #                        gb_green)
+    # gb_red = ~mask_g_rgb & mask_b_rgb
+    # dicty = threeDimMasked(dicty, '<MeanG & >MeanB', image,
+    #                        gb_red)
+    # # Combine
+    # both_gr_from_gb = gb_green | gb_red
+    # dicty = threeDimMasked(dicty, 'Green Blue Norm', image,
+    #                        both_gr_from_gb)
 
-    # endregion
+    # # endregion
     return dicty
 
 # @profile
