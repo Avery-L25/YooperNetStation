@@ -12,6 +12,7 @@ import numpy as np
 import os
 from os import path
 import psutil
+import gc
 import logging
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import matplotlib.pyplot as plt
@@ -76,7 +77,7 @@ class AuroraImage(object):
     Class to mask images
     '''
 
-    def init(self, imagedata):
+    def __init__(self, imagedata):
 
         # Get image as numpy array from provided data
         if type(imagedata) is str:
@@ -128,7 +129,7 @@ class AuroraImage(object):
                             f'(Type: {type(imagedata)})')
 
         # Set current image
-        self.curimg = rawimg.astype('uint16')
+        self.image = rawimg.astype('uint16')
 
         # Set file name
         self.save_file = 'MaskGrid'
@@ -237,6 +238,9 @@ class AuroraImage(object):
         # Create mask
         return (loCon <= Num) & (Num <= upCon)
 
+    def domPercentMask(self, Channel, dom=105):
+        pass
+
     def threeDimMasked(self, mask):
         '''
         Make 2D masks 3D to match the image format
@@ -269,9 +273,11 @@ class AuroraImage(object):
 
     # endregion
 
-    def maskSingleImage(self, image):
+    def maskSingleImage(self):
         # Start empty dictionary
         mask_dict = self.maskDict
+        image = self.image
+
         mask_dict['Raw Image'] = np.ones(image.shape, dtype=bool)
 
         # Image statistics
@@ -386,6 +392,31 @@ class AuroraImage(object):
 
     # region Create Visual
 
+    def applyMasks(self, masks=None):
+        '''
+        Apply masks to image before displaying.
+        '''
+        if masks is None:
+            # if no masks are provided, apply generated masks
+            masks = self.maskDict.keys()
+
+        # make copy of raw image to apply masks
+        im_masked = np.copy(self.image)
+
+        # iterate through masks
+        for m in masks:
+            cur_mask = self.maskDict[m]
+
+            if cur_mask.shape.count(3) == 1:
+                # if mask is already 3D apply
+                im_masked *= cur_mask
+            else:
+                # if mask is 2D, apply to each RGB channel
+                for c in [0, 1, 2]:
+                    im_masked[:, :, c] *= self.maskDict[m]
+
+        return im_masked
+
     def textOverlay(self, img, text):
         shape = img.shape
         offset = 0.90
@@ -400,56 +431,96 @@ class AuroraImage(object):
         return name_img
 
     # @profile
-    def stackImages(self, img_dict, width=0):
-        keys = img_dict.keys()
+    def stackImages(self, mask_dict=None, width=0, height=0):
+        '''
+        Create grid of images depicting the different masks
+        applied to the current working image.
+        The grid is then saved to the stored name.
+            Default: \'MaskedGrid.jpeg\'
+
+        Parameters
+            ----------
+            img_dict: dictionary
+                Dictionary containing the masks for the grid.
+                If None use the maskDict property.
+            width: int, defaults to 0
+                If width is given, set the number of masks
+                to show horizontally. If not, use height.
+            height: int, defaults to 0
+                If width is not given, set the number of masks
+                to show vetically. If neither height nor width
+                is given, the grid will default to a square image.
+    
+        Output
+        ------
+        full: None, save an image
+            Will save an image grid depicting the different masks
+            for analysis. Default file name is \'MaskedGrid.jpeg\'
+    
+        '''
+
+        if mask_dict is None:
+            mask_dict = self.maskDict
+
+        # Get keys as a list
+        keys = mask_dict.keys()
         dict_len = len(keys)
-        list(keys)
         keys = list(keys)
-        if width == 0:
-            width = int(np.round(np.sqrt(len(keys))))
 
-        # Get Shape to finish a row with blank squares
-        img_shape = img_dict[keys[0]].shape
+        # Determine the shape of the grid
+        if width == 0 & height == 0:
+            # Get a square shaped grid
+            width = int(np.round(np.sqrt(dict_len)))
+        elif width != 0:
+            pass
+        else:
+            # Use height to determine the width of each row
+            width = int(dict_len / height) + (dict_len % height > 0)
 
-        stack = []
+        # Initialize the grid to stack 
+        grid = []
+        current_row = []
 
         while len(keys) != 0:
-
-            current_row = []
+            # Make one row of images
             for i in range(0, width):
-                log.debug(f'Stacking image {dict_len-len(keys)} of {dict_len}')
-                log_mem("")
+                # Log 
+                log_mem(f'Stacking image {dict_len-len(keys)} of {dict_len}')
 
                 if len(keys) == 0:
-                    current_row.append(np.zeros(img_shape))
+                    # if there are no more masks fill shape with black images
+                    current_row.append(np.zeros(self.image.shape))
                 else:
                     k = keys[0]
-                    cur_img = self.textOverlay(img_dict[k], k)
-                    current_row.append(cur_img)
-                    img_dict.pop(k)
+                    # Get and label current image
+                    mask_img = self.applyMasks(mask_dict[k])
+                    cur_img = self.textOverlay(mask_img, k)
+                    current_row.append(cur_img)  # Add to horizonstal stack
+
+                    # Remove key 
                     keys.remove(k)
                     del cur_img
-            np.hstack(current_row)
-            stack.append(np.hstack(current_row))
 
-        full = np.vstack(stack)
-        img_dict.clear()
-        return full
+            # Add row to grid before
+            grid.append(np.hstack(current_row))
+            current_row = []
 
-    def writeGrid(self, img_dict, width, img_width=4000):
-        grid_img = self.stackImages(img_dict, width=width)
+        # Create full grid
+        grid_array = np.vstack(grid)
 
+        # Resize grid and save
         img_width = 4000
-        aspect = grid_img.shape[0]/grid_img.shape[1]
+        aspect = grid_array.shape[0]/grid_array.shape[1]
         img_height = int(img_width * aspect)
 
-        log.debug('Resize image')
-        small_grid = cv.resize(grid_img, (img_width, img_height))
+        cv.imwrite(self.save_file,
+                   cv.resize(grid_array, (img_width, img_height)))
 
-        log.debug('Write images')
-        cv.imwrite(f'{self.save_file}.jpeg',  small_grid)
+        # Delete locations holding extra image
+        del current_row
+        del grid_array
+        gc.collect()
 
-        # cv.imwrite(f'{self.save_file}_{photo2find}{uni}.jpeg',  small_grid)
     # endregion
 
 
