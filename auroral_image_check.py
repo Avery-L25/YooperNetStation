@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 '''
 Given an image (or file), create masking steps to identify
-potential aurora for image comparisons.
+potential aurora in image comparison.
 
-Saves the created masks in a grid image titled 'MaskedGrid.jpeg'
-for viewing and analysis.
+Save the created masks in a grid image titled 'MaskGrid.jpeg'
+for viewing and analysis by calling the stackImages() method.
 '''
 
 import cv2 as cv
@@ -21,9 +21,9 @@ plt.ion()
 # import shutil
 
 # Variables
-ratio_low = 0.9
+ratio_low = 0.5
 ratio_high = 1.3
-dom_percent = 0.95
+dom_percent = 1.05
 
 # Constants
 IMAGE_EXTENSIONS = ['png', 'jpeg', 'jpg', 'jpe', 'webp']
@@ -32,27 +32,32 @@ DIC_RGB = {0: 'RED', 1: 'GREEN', 2: 'BLUE', slice(0, 3): 'RGB'}
 # region Input
 parser = ArgumentParser(description=__doc__,
                         formatter_class=RawDescriptionHelpFormatter)
-parser.add_argument('-l', '--loglevel',  type=int, default=25,
+parser.add_argument("-i", "--infile", default=None,  help="Set file to read.")
+parser.add_argument("-o", "--outfile", default='MaskGrid.jpeg',  help="Set " +
+                    "output file name. Defaults to \'MaskGrid.jpeg\'.")
+parser.add_argument('-l', '--loglevel',  type=int, default=20,
                     help='Logger level for debugging' +
-                    '10 for max, 21 for high, 30 for warnings/errors.')
-parser.add_argument("-o", "--outfile", default='',  help="Set " +
-                    "output file name. Defaults to generic csv from datetime.")
-parser.add_argument("-i", "--infile", default='',  help="Assign file to read.")
+                    '10 for max, 19 for memory, 30 for warnings/errors.')
 
 # Handle arguments:
 args = parser.parse_args()
 
-logging_value = args.loglevel
-outfile = args.outfile
-infile = args.infile
+infile = args.infile  # File to read, if not provided skip
+outfile = args.outfile  # File to output too
+logging_value = args.loglevel  # Level to display logging information
 
 
 # memory
-def log_mem(label=""):
+def get_memory(label=""):
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
-    log.log(19, f"{label} - RSS: {mem_info.rss / 1024 / 1024:.2f} MB, " +
-            f"VMS: {mem_info.vms / 1024 / 1024:.2f} MB")
+    mem_text = (f"{label} - RSS: {mem_info.rss / 1024 / 1024:.2f} MB, " +
+                f"VMS: {mem_info.vms / 1024 / 1024:.2f} MB")
+    return mem_text
+
+
+def log_mem(txt):
+    log.log(19, txt)
 
 
 # Log
@@ -61,20 +66,26 @@ DEBUG2 = 11
 HIGH_DEBUG = 24
 DATA = 28
 
+# Add logging levels
 logging.addLevelName(DEBUG2, "DEBUG2")
 logging.addLevelName(HIGH_DEBUG, "HIGH_DEBUG")
 logging.addLevelName(DATA, "DATA")
 
 log = logging.getLogger("auraCheck")
-log.setLevel(level=10)
+log.setLevel(level=logging_value)
 # endregion
 
-log_mem("Script start")
+log.info(get_memory("Script start"))
 
 
 class AuroraImage(object):
     '''
-    Class to mask images
+    Apply a variety of masks to an image.
+    Use masks to compare multiple images and
+    analyze for potential aurora.
+
+    Use AuroraImage_1 - AuroraImage_2 to
+    calculate the MSE using standard masks.
     '''
 
     def __init__(self, imagedata):
@@ -132,58 +143,95 @@ class AuroraImage(object):
         self.image = rawimg.astype('uint16')
 
         # Set file name
-        self.save_file = 'MaskGrid'
-
-        # Setup dictionary
-        self.maskDict = {}
+        self.save_file = 'MaskGrid.jpeg'
 
         # Set configuring variables
         # When masking based on a single RGB channel, display only 1 color
         self.rgb_channels = False
         # When true creates inverse masks, ie mask = img > img.mean() and ~mask
         self.inverse_masks = False
+        # Determines if standard deviation masks are made in norm masking
+        self.thoroughNorm = False
+
+        # Setup dictionary
+        self.maskDict = {}
+
+        # Define comparison criteria
+        self.compareMasks = ['Inverse Neutral Gt Masked', 'RGB: Cur >Mean',
+                             'Norm >Mean - 0.25 STD Green']
+
+    def __sub__(self, other):
+        product = self.compare(other, masks=self.compareMasks)
+        return product
 
     # region Masks
 
-    def normMask(self, image):
+    def normMask(self, channels=[0, 1, 2]):
         '''
         Returns norm masks for r, g, and b channels.
         If image is provided, automatically do masked version.
 
         When img_ref is uint8 the greater than mean isolates
         aurora better than uint16.
+
+        If the thoroughNorm attribute is True, in addition to
+        the greater than and less than the mean masks, several
+        masks using standard deviation will be made including:
+        > mean - 0.5 * std
+        > mean + 0.5 * std
+        > mean + 2.0 * std
+
+        Parameters
+        ----------
+        channels: list, defaults to [0,1,2]
+            Choose which channels to get masks for.
+            Defaults to all RGB channels
         '''
-        img_ref = image.astype('uint16')
+        img_ref = self.image.astype('uint16')
         mask_dict = self.maskDict
         sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
                            np.square(img_ref[:, :, 1]) +
                            np.square(img_ref[:, :, 2]))
 
         # Set up masking variables
-
+        mean_masks = []
         # If dividing by 0, it is 0/0
         sum_squares_rgb[sum_squares_rgb == 0] = 1
 
-        # Green
-        norm_g_rgb = img_ref[:, :, 1] / np.sqrt(sum_squares_rgb)
-        mask_g_rgb = norm_g_rgb > (norm_g_rgb.mean())
+        for i in channels:
+            # Get working value
+            norm = img_ref[:, :, i] / np.sqrt(sum_squares_rgb)
+            clr = DIC_RGB[i]  # Current color for the dictionary
 
-        # Red
-        norm_r_rgb = img_ref[:, :, 0] / np.sqrt(sum_squares_rgb)
-        mask_r_rgb = norm_r_rgb > (norm_r_rgb.mean())
+            # Get mask above the mean
+            mean = norm > (norm.mean())
+            mean_masks.append(mean)
 
-        # Blue
-        norm_b_rgb = img_ref[:, :, 2] / np.sqrt(sum_squares_rgb)
-        mask_b_rgb = norm_b_rgb > (norm_b_rgb.mean())
+            if self.thoroughNorm is True:
+                # Get Several STD numbers
+                stdm0_25 = norm > (norm.mean() - norm.std() * 0.25)
+                stdm0_5 = norm > (norm.mean() - norm.std() * 0.5)
+                stdm1 = norm > (norm.mean() - norm.std())
+                std0_25 = norm > (norm.mean() + norm.std() * 0.25)
+                std0_5 = norm > (norm.mean() + norm.std() * 0.5)
+                std1 = norm > (norm.mean() + norm.std())
+                std2 = norm > (norm.mean() + norm.std() * 2)
 
-        mask_dict['Norm >Mean Green'] = mask_g_rgb
-        mask_dict['Norm <Mean Green'] = ~mask_g_rgb
-        mask_dict['Norm >Mean Red'] = mask_r_rgb
-        mask_dict['Norm <Mean Red'] = ~mask_r_rgb
-        mask_dict['Norm >Mean Blue'] = mask_b_rgb
-        mask_dict['Norm <Mean Blue'] = ~mask_b_rgb
+                # Save masks
+                mask_dict[f'Norm >Mean - 1 STD {clr}'] = stdm1
+                mask_dict[f'Norm >Mean - 0.5 STD {clr}'] = stdm0_5
+                mask_dict[f'Norm >Mean - 0.25 STD {clr}'] = stdm0_25
+                mask_dict[f'Norm >Mean {clr}'] = mean
+                mask_dict[f'Norm <Mean {clr}'] = ~mean
+                mask_dict[f'Norm >Mean + 0.25 STD {clr}'] = std0_25
+                mask_dict[f'Norm >Mean + 0.5 STD {clr}'] = std0_5
+                mask_dict[f'Norm >Mean + 1 STD {clr}'] = std1
+                mask_dict[f'Norm >Mean + 2 STD {clr}'] = std2
+            else:
+                mask_dict[f'Norm >Mean {clr}'] = mean
+                mask_dict[f'Norm <Mean {clr}'] = ~mean
 
-        return mask_r_rgb, mask_g_rgb, mask_b_rgb
+        return mean_masks
 
     def neutralMask(self, Num, Den, uBnd=255.0, lBnd=0.0):
         '''
@@ -238,8 +286,45 @@ class AuroraImage(object):
         # Create mask
         return (loCon <= Num) & (Num <= upCon)
 
-    def domPercentMask(self, Channel, dom=105):
-        pass
+    def domPercentMask(self, Channel=1, dom=1.05):
+        '''
+        Creates a mask where the given rgb channel excedes
+        other channel values by a given ratio.
+
+        Parameters
+        ----------
+        Channel: int, defaults to 1 (green)
+            The integer value for RGB channels.
+            R=0, G=1, B=2
+        dom: float, defaults to 1.05
+            The ratio that Channel over the remaining
+            channels must excede for the mask.
+
+        Output
+        ------
+        mask: np.ndarray
+            This mask will be a boolean array that covers the portion
+            of the image that is 'dominant' with the given ratio.
+
+        Examples
+        --------
+        We want a mask where Green/Blue is greater than 1.05.
+        This is the same as where Green is 105% of the Blue value.
+        >>> green = np.array([[13,12,9], [8, 2, 1]])
+        >>> blue  = np.array([[10,10,10],[10,10,10]])
+        >>> green / blue
+        array([[1.3,1.2,0.9],
+               [0.8,0.2,0.1]])
+        >>> neutralMask(green, blue, uBnd=0.95)
+        array([[True,  True,  False],
+               [False, False, False]])
+        '''
+        image = self.image
+        rgb = [0, 1, 2]
+        rgb.remove(Channel)
+
+        return ((image[:, :, Channel] >= image[:, :, rgb[0]] * dom)
+                | (image[:, :, Channel] >= image[:, :, rgb[1]] * dom))
 
     def threeDimMasked(self, mask):
         '''
@@ -273,25 +358,20 @@ class AuroraImage(object):
 
     # endregion
 
-    def maskSingleImage(self):
-        # Start empty dictionary
+    def maskBasicImage(self):
+        '''
+        Add ratio based masks to the dictionary.
+        Uses the neutralMask and domPercentMask methods
+        with the high and low ratios, and the dominant percentage
+        to get several default masking combinations.
+        '''
         mask_dict = self.maskDict
         image = self.image
 
-        mask_dict['Raw Image'] = np.ones(image.shape, dtype=bool)
-
-        # Image statistics
-        # region Dominant Percentage
         # Find Where green is dominant
-        mask_dom_green = (self.neutralMask(image[:, :, 2], image[:, :, 1],
-                                           dom_percent)
-                          | self.neutralMask(image[:, :, 0], image[:, :, 1],
-                                             dom_percent))
+        mask_dom_green = self.domPercentMask(Channel=1, dom=dom_percent)
         mask_dict['Dominat Percent Green Mask'] = mask_dom_green
 
-        # endregion
-
-        # region Neutral Green Top
         # Get Green/Blue Ratio
         log.debug('Get Green/Blue Ratio')
         maskGB_neutral = self.neutralMask(image[:, :, 1], image[:, :, 2],
@@ -314,9 +394,7 @@ class AuroraImage(object):
         mask_very_green = (mask_Gtop_neutral & mask_dom_green)
         mask_dict['Regular Top Very Green Mask'] = mask_very_green
         mask_dict['Inverse Top Very Green Mask'] = mask_inv_very_green
-        # endregion
 
-        # region Neutral Green Bottom
         # Get Blue/Green Ratio/Mask
         log.debug('Get Blue/Green Ratio')
         maskBG_neutral = self.neutralMask(image[:, :, 2], image[:, :, 1],
@@ -339,12 +417,18 @@ class AuroraImage(object):
         mask_very_bot_green = (mask_Gbot_neutral & mask_dom_green)
         mask_dict['Regular Bottom Very Green Mask'] = mask_very_bot_green
         mask_dict['Inverse Bottom Very Green Mask'] = mask_inv_very_bot_green
-        # endregion
+
+    def maskNormImage(self):
+        '''
+        Add norm based masks to the dictionary.
+        Uses the normMask method to get several
+        default masking combinations.
+        '''
+        mask_dict = self.maskDict
 
         # Norm Masks for rgb channels
-        mask_r_rgb, mask_g_rgb, mask_b_rgb = self.normMask(image)
+        mask_r_rgb, mask_g_rgb, mask_b_rgb = self.normMask()
 
-        # region Trial Combos
         # Greater Green Mean Less Red Mean
         gr_not_red = mask_g_rgb & ~mask_r_rgb
         mask_dict['>MeanG & <MeanR'] = gr_not_red
@@ -359,14 +443,18 @@ class AuroraImage(object):
         both_gr_from_gb = gb_green | gb_red
         mask_dict['Green Blue Norm'] = both_gr_from_gb
 
-        # # endregion
-
     # @profile
-    def maskStatsImage(self, image):
-        # Start empty dictionary
+    def maskStatsImage(self):
+        '''
+        Add statistics based masks to the dictionary.
+        Uses the mean value of different channels of the
+        image to isolate dominant portions of the image.
+        '''
+
         masks_dict = self.maskDict
 
         # Image statistics
+        image = self.image
         img_mean = image.mean()
         img_stdv = image.std()
 
@@ -391,19 +479,65 @@ class AuroraImage(object):
                                                                   + img_stdv*2)
 
     # region Create Visual
+    def compare(self, other, masks=None):
+        '''
+        Compare two images using the same masking method.
+
+        Parameters
+        ----------
+        masks: list, defaults to None
+            List of mask keys to use while comparing two images.
+        '''
+        if masks is None:
+            log.error('No masks where given to compare.')
+
+        cur_img = self.applyMasks(masks)
+        pre_img = other.applyMasks(masks)
+
+        # Calculate MSE
+        mask_img_diff = cur_img - pre_img
+        mse = float(np.mean(mask_img_diff**2))
+        # rmse = np.sqrt(np.mean((mask_img_diff)**2))
+        # norm_of_masked = np.linalg.norm(mask_img_diff)
+
+        return mse
 
     def applyMasks(self, masks=None):
         '''
-        Apply masks to image before displaying.
-        '''
-        if masks is None:
-            # if no masks are provided, apply generated masks
-            masks = self.maskDict.keys()
+        Apply masks to an image.
 
+        Parameters
+        ----------
+        masks: list[str] or dict_keys, defaults to None
+            List of masks to apply to an image.
+            If no masks are provided all saved masks will
+            be applied to the image.
+        '''
         # make copy of raw image to apply masks
         im_masked = np.copy(self.image)
 
-        # iterate through masks
+        # Get masks as list
+        if masks is None:
+            # if no masks are provided, apply generated masks
+            log.info('No masks were provided, using all in maskDict')
+            masks = self.maskDict.keys()
+        elif type(masks) is str:
+            # If single mask is passed, make it a list
+            masks = [masks]
+        elif type(masks) is np.array:
+            # Not made to handle a passed mask
+            warning_msg = 'A masked array was provided instead of a key.'
+            log.warning(warning_msg)
+            raise TypeError(warning_msg)
+        elif type(masks) in [list, type({}.keys())]:
+            # Correct type
+            pass
+        else:
+            error_msg = f'Masks is unexpected type {type(masks)}'
+            log.error(error_msg)
+            raise TypeError(error_msg)
+
+        # Iterate through masks
         for m in masks:
             cur_mask = self.maskDict[m]
 
@@ -418,8 +552,33 @@ class AuroraImage(object):
         return im_masked
 
     def textOverlay(self, img, text):
+        '''
+        Write text at the bottom left corner of an image.
+        Text size and boldness scales with the size of the image.
+
+        Useful while making a grid to determine which masks
+        will be most suitable for comparison.
+
+        Parameters
+        ----------
+        img: np.array
+            The image to write text over
+        text: str
+            The text to write on an image
+
+        Output
+        ------
+        name_img: np.array
+            The image with text written over it.
+            Text scales with the size of the image and
+            is written to the bottom left corner.'''
+
         shape = img.shape
+
+        # How far from the bottom left corner to place text origin
         offset = 0.90
+
+        # Scale the font size to be visibile on any size image
         font_scale = 0.5 + shape[1] // 500
         font_bold = 2 + shape[1] // 700
 
@@ -439,24 +598,24 @@ class AuroraImage(object):
             Default: \'MaskedGrid.jpeg\'
 
         Parameters
-            ----------
-            img_dict: dictionary
-                Dictionary containing the masks for the grid.
-                If None use the maskDict property.
-            width: int, defaults to 0
-                If width is given, set the number of masks
-                to show horizontally. If not, use height.
-            height: int, defaults to 0
-                If width is not given, set the number of masks
-                to show vetically. If neither height nor width
-                is given, the grid will default to a square image.
-    
+        ----------
+        img_dict: dictionary
+            Dictionary containing the masks for the grid.
+            If None use the maskDict property.
+        width: int, defaults to 0
+            If width is given, set the number of masks
+            to show horizontally. If not, use height.
+        height: int, defaults to 0
+            If width is not given, set the number of masks
+            to show vetically. If neither height nor width
+            is given, the grid will default to a square image.
+
         Output
         ------
         full: None, save an image
             Will save an image grid depicting the different masks
             for analysis. Default file name is \'MaskedGrid.jpeg\'
-    
+
         '''
 
         if mask_dict is None:
@@ -477,14 +636,14 @@ class AuroraImage(object):
             # Use height to determine the width of each row
             width = int(dict_len / height) + (dict_len % height > 0)
 
-        # Initialize the grid to stack 
+        # Initialize the grid to stack
         grid = []
         current_row = []
 
         while len(keys) != 0:
             # Make one row of images
             for i in range(0, width):
-                # Log 
+                # Log
                 log_mem(f'Stacking image {dict_len-len(keys)} of {dict_len}')
 
                 if len(keys) == 0:
@@ -493,11 +652,11 @@ class AuroraImage(object):
                 else:
                     k = keys[0]
                     # Get and label current image
-                    mask_img = self.applyMasks(mask_dict[k])
+                    mask_img = self.applyMasks(k)
                     cur_img = self.textOverlay(mask_img, k)
                     current_row.append(cur_img)  # Add to horizonstal stack
 
-                    # Remove key 
+                    # Remove key
                     keys.remove(k)
                     del cur_img
 
@@ -524,4 +683,14 @@ class AuroraImage(object):
     # endregion
 
 
-log_mem("Script end")
+# if run with a file given to read, a masked grid is created
+if infile is not None:
+    aura = AuroraImage(infile)
+    aura.maskBasicImage()
+    aura.save_file = outfile
+
+    # Trial stuff
+    # aura.maskDict.pop('Dominat Percent Green Mask')
+    # aura.stackImages(width=6)
+    # print(f'Low:{ratio_low}\nHigh:{ratio_high}\nDom:{dom_percent}')
+log.info(get_memory("Script end"))
