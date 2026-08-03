@@ -21,13 +21,14 @@ plt.ion()
 # import shutil
 
 # Variables
-ratio_low = 0.5
+ratio_low = 0.9
 ratio_high = 1.3
 dom_percent = 1.05
 
 # Constants
 IMAGE_EXTENSIONS = ['png', 'jpeg', 'jpg', 'jpe', 'webp']
 DIC_RGB = {0: 'RED', 1: 'GREEN', 2: 'BLUE', slice(0, 3): 'RGB'}
+RGB_CHANNEL = slice(0, 3)
 
 # region Input
 parser = ArgumentParser(description=__doc__,
@@ -56,8 +57,8 @@ def get_memory(label=""):
     return mem_text
 
 
-def log_mem(txt):
-    log.log(19, txt)
+def log_mem(txt=''):
+    log.log(19, get_memory(txt))
 
 
 # Log
@@ -152,6 +153,9 @@ class AuroraImage(object):
         self.inverse_masks = False
         # Determines if standard deviation masks are made in norm masking
         self.thoroughNorm = False
+        # Exclude values above the minimum when using mean in the image
+        self.nonMinStat = True
+        self.minRGBValue = 10
 
         # Setup dictionary
         self.maskDict = {}
@@ -358,6 +362,17 @@ class AuroraImage(object):
 
     # endregion
 
+    # region Library of Masks
+
+    def allDefaultMasks(self):
+        '''
+        Get the basic group of masks from the
+        Basic, Norm, and Stats methods
+        '''
+        self.maskBasicImage()
+        self.maskNormImage()
+        self.maskStatsImage()
+
     def maskBasicImage(self):
         '''
         Add ratio based masks to the dictionary.
@@ -444,7 +459,7 @@ class AuroraImage(object):
         mask_dict['Green Blue Norm'] = both_gr_from_gb
 
     # @profile
-    def maskStatsImage(self):
+    def maskStatsImage(self, image=None):
         '''
         Add statistics based masks to the dictionary.
         Uses the mean value of different channels of the
@@ -454,29 +469,45 @@ class AuroraImage(object):
         masks_dict = self.maskDict
 
         # Image statistics
-        image = self.image
-        img_mean = image.mean()
-        img_stdv = image.std()
+        if image is None:
+            image = self.image
+
+        if self.nonMinStat is True:
+            img_mean = image[image >= self.minRGBValue].mean()
+            img_stdv = image[image >= self.minRGBValue].std()
+        else:
+            img_mean = image.mean()
+            img_stdv = image.std()
 
         for i in [0, 1, 2, slice(0, 3)]:
             # Save memory by overwriting images
             cur = image[:, :, i]
+            chan = DIC_RGB[i]
 
-            log.debug(f'Stat masks for {DIC_RGB[i]}')
+            if self.nonMinStat is True:
+                cur_mean = cur[cur >= self.minRGBValue].mean()
+                cur_std = cur[cur >= self.minRGBValue].std()
+            else:
+                cur_mean = cur.mean()
+                cur_std = cur.std()
+
+            log.debug(f'Stat masks for {chan}')
             # Cur masks are based of the stats of the specific channel
-            masks_dict[f'{DIC_RGB[i]}: Cur >Mean'] = cur >= cur.mean()
-            masks_dict[f'{DIC_RGB[i]}: Cur >Mean+STD'] = cur >= (cur.mean()
-                                                                 + cur.std())
-            masks_dict[f'{DIC_RGB[i]}: Cur >Mean+2STD'] = cur >= (cur.mean()
-                                                                  + cur.std()
-                                                                  * 2)
+            masks_dict[f'{chan}: Cur >Mean'] = cur >= cur_mean
+            masks_dict[f'{chan}: Cur >Mean+STD'] = cur >= (cur_mean
+                                                           + cur_std)
+            masks_dict[f'{chan}: Cur >Mean+2STD'] = cur >= (cur_mean
+                                                            + cur_std
+                                                            * 2)
 
             # Img masks_dict are based on stats of all image channels
-            masks_dict[f'{DIC_RGB[i]}: IMG >Mean'] = cur >= img_mean
-            masks_dict[f'{DIC_RGB[i]}: IMG >Mean+STD'] = cur >= (img_mean
-                                                                 + img_stdv)
-            masks_dict[f'{DIC_RGB[i]}: IMG >Mean+2STD'] = cur >= (img_mean
-                                                                  + img_stdv*2)
+            masks_dict[f'{chan}: IMG >Mean'] = cur >= img_mean
+            masks_dict[f'{chan}: IMG >Mean+STD'] = cur >= (img_mean
+                                                           + img_stdv)
+            masks_dict[f'{chan}: IMG >Mean+2STD'] = cur >= (img_mean
+                                                            + img_stdv*2)
+
+    # endregion
 
     # region Create Visual
     def compare(self, other, masks=None):
@@ -515,6 +546,7 @@ class AuroraImage(object):
         '''
         # make copy of raw image to apply masks
         im_masked = np.copy(self.image)
+        not_masks = True
 
         # Get masks as list
         if masks is None:
@@ -524,11 +556,11 @@ class AuroraImage(object):
         elif type(masks) is str:
             # If single mask is passed, make it a list
             masks = [masks]
-        elif type(masks) is np.array:
+        elif type(masks[0]) is np.ndarray:
             # Not made to handle a passed mask
             warning_msg = 'A masked array was provided instead of a key.'
             log.warning(warning_msg)
-            raise TypeError(warning_msg)
+            not_masks = False
         elif type(masks) in [list, type({}.keys())]:
             # Correct type
             pass
@@ -539,15 +571,17 @@ class AuroraImage(object):
 
         # Iterate through masks
         for m in masks:
-            cur_mask = self.maskDict[m]
-
+            if not_masks is True:
+                cur_mask = self.maskDict[m]
+            else:
+                cur_mask = m
+            
             if cur_mask.shape.count(3) == 1:
                 # if mask is already 3D apply
                 im_masked *= cur_mask
             else:
                 # if mask is 2D, apply to each RGB channel
-                for c in [0, 1, 2]:
-                    im_masked[:, :, c] *= self.maskDict[m]
+                im_masked[:, :, :] *= self.threeDimMasked(cur_mask)
 
         return im_masked
 
@@ -627,13 +661,16 @@ class AuroraImage(object):
         keys = list(keys)
 
         # Determine the shape of the grid
-        if width == 0 & height == 0:
+        if (width == 0) & (height == 0):
             # Get a square shaped grid
+            log.debug('finding the square size')
             width = int(np.round(np.sqrt(dict_len)))
         elif width != 0:
+            log.debug('width given')
             pass
         else:
             # Use height to determine the width of each row
+            log.debug(f'height given {dict_len}/{height}={dict_len / height}')
             width = int(dict_len / height) + (dict_len % height > 0)
 
         # Initialize the grid to stack
@@ -682,15 +719,43 @@ class AuroraImage(object):
 
     # endregion
 
+    def filterImage(self, channels, min=None, image=None):
+        '''Filter low light image conditions'''
+        if image is None:
+            # If no image provided, filter the reference image
+            filtered_image = np.copy(self.image)
+        else:
+            # if filtering a reference image
+            filtered_image = np.copy(image)
+
+        if min is None:
+            min = self.minRGBValue
+
+        if type(channels) is slice:
+            filtered_image *= [filtered_image[:, :, channels] >= min][0]
+        elif type(channels) is int:
+            filtered_image *= [filtered_image[:, :, channels] >= min][0]
+        else:
+            for c in channels:
+                filtered_image *= [filtered_image[:, :, c] >= min][0]
+
+        if image is None:
+            return None
+        else:
+            return filtered_image
+
+    def showImage(self):
+        plt.imshow(self.image)
+
 
 # if run with a file given to read, a masked grid is created
 if infile is not None:
     aura = AuroraImage(infile)
-    aura.maskBasicImage()
+    aura.allDefaultMasks()
     aura.save_file = outfile
-
+    do_masks = []
     # Trial stuff
     # aura.maskDict.pop('Dominat Percent Green Mask')
-    # aura.stackImages(width=6)
-    # print(f'Low:{ratio_low}\nHigh:{ratio_high}\nDom:{dom_percent}')
+    # aura.stackImages(height=4)
+    print(f'Low:{ratio_low}\nHigh:{ratio_high}\nDom:{dom_percent}')
 log.info(get_memory("Script end"))
