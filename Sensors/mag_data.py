@@ -3,10 +3,10 @@
 # Create for 2024 UM-SPRL MDP Cohort
 
 import spidev  # Not included in std library, need to download onto RPi
-import time
-import datetime
+# import time
+# import datetime
 import struct
-from datetime import datetime
+# from datetime import datetime
 
 # NOTE: Import the ADS1x15 module for Greenland Mag if working
 # import Adafruit_ADS1x15 # Not included in std library
@@ -171,11 +171,11 @@ def mag_data(write_out=False):
     # Moldwin Mag data collection and assignment
     readings = spi.xfer2([QRM3100_MX2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                           0x00, 0x00, 0x00])
-                          
+
     m_Bx = convert_to_signed_int(readings[1], readings[2], readings[3])
     m_By = convert_to_signed_int(readings[4], readings[5], readings[6])
     m_Bz = convert_to_signed_int(readings[7], readings[8], readings[9])
-    
+
     if write_out is True:
         print('Moldwin y: {0}'.format(m_By))
         print('Moldwin z: {0}'.format(m_Bz))
@@ -202,7 +202,6 @@ def mag_data(write_out=False):
     # =========================================================================
     # =========================================================================
     # endregion
-
 
 
 if __name__ == '__main__':

@@ -14,9 +14,10 @@ import numpy as np
 import subprocess
 
 import shutil
+import sys
 import os
-from os import path # , listdir
-from os.path import  join # isfile,  getsize, isdir
+from os import path  # , listdir
+from os.path import join  # isfile,  getsize, isdir
 import h5py
 import glob
 import toml
@@ -27,20 +28,21 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload, MediaUpload
+from googleapiclient.http import MediaFileUpload  # , MediaUpload
 
-### Load Config Files
+# ## Load Config Files
 wkdir = path.dirname(path.realpath(__file__))
 config_file_path = join(wkdir, "/.YooperConfig.toml")
 yoop_config = toml.load(config_file_path)
 
 # Write Storage Locations
 yoop_paths = yoop_config['paths']
-img_folder_path     = wkdir + yoop_paths['Camera_Images_Collection']    
-img_info_path       = wkdir + yoop_paths['Camera_Info_Folder'] 
-sensor_file_path    = wkdir + yoop_paths['Sensor_Data_Folder']
+img_folder_path = wkdir + yoop_paths['Camera_Images_Collection']
+img_info_path = wkdir + yoop_paths['Camera_Info_Folder']
+sensor_file_path = wkdir + yoop_paths['Sensor_Data_Folder']
 # Google folder ID for individual file uploads
-google_folder_id = yoop_paths['GDrive_Folder_ID']               #? If using hdf5 or uploading using python instead of RCLONE
+# ? If using hdf5 or uploading using python instead of RCLONE
+google_folder_id = yoop_paths['GDrive_Folder_ID']
 
 # Get formats for storage locations/files
 yoop_form = yoop_config['formats']
@@ -55,11 +57,12 @@ file_ext_del = ['png', 'csv']
 safe_dirs = ['Sensors']
 rclone_remote = yoop_paths['REMOTE_CONFIG']
 
+
 # region Upload
 # Define functions # todo check rclone setup for installer
 def rclone(move=True, path='', folder=''):
     '''
-    Given a folder (and path???) uploads the folder and its contents to 
+    Given a folder (and path???) uploads the folder and its contents to
     the set "remote" path in rclone.
 
     Parameters
@@ -80,27 +83,27 @@ def rclone(move=True, path='', folder=''):
         uploadMethod = 'copy'
     else:
         print("CRITICAL ERROR: UNKNOWN UPLOADING OPERATION")
-        #! Upload a flag or file to alert handler?
-    
+        uploadMethod = 'copy'  # Copy incase
+        # ! Upload a flag or file to alert handler?
+
     # Create remote path for upload
-    remote_path = join(rclone_remote,folder)
+    remote_path = join(rclone_remote, folder)
+
     # create command to upload folder using rclone
-    str_cmd = f"rclone copy {path} {remote_path}"
-    
-    # output the two would-be commands
-    # print(f"string based command: {str_cmd}")
+    str_cmd = f"rclone {uploadMethod} {path} {remote_path}"
+
     runStr(str_cmd)
 
 
-# todo will this function be valueable
-def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google Drive
+# Upload data to Google Drive
+def uploadFileToDrive(folder_id: str, file_name: str):
     '''
     Upload data to the google drive.
     '''
 
     creds = None
-    token_path = '/home/USER/SPRL_Observatory/Token_management/token_2.json'
-    creds_path = '/home/USER/SPRL_Observatory/Token_management/credentials.json'
+    token_path = '/Token_management/token_2.json'
+    creds_path = '/Token_management/credentials.json'
 
     # Get credentials for uploading to google drive folder
     if path.exists(token_path):
@@ -127,7 +130,7 @@ def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google D
         media = MediaFileUpload(
             file_name, mimetype="application/x-hdf5", resumable=True
         )
-        
+
         file = (
             service.files()
             .create(body=file_metadata, media_body=media, fields="id",
@@ -142,7 +145,7 @@ def uploadFileToDrive(folder_id: str,file_name: str):  # Upload data to Google D
 
 def uploadFiles():
     '''
-    Uploads data files from the YooperNet station. Creates and/or updates 
+    Uploads data files from the YooperNet station. Creates and/or updates
     working directories for data collection. Logs the procedure.
 
     TODO
@@ -153,15 +156,15 @@ def uploadFiles():
     Parameters
     ----------
     '''
-    # Save extra variables before they are written
-    path_to_delete = data_folder_full
     # 1st: Upload files
     # rclone -> upload current working folder to remote with same name
-    rclone(path=data_folder_full,folder=current_data_folder)
+    rclone(path=data_folder_full, folder=current_data_folder)
 
     # 2nd: Update working directory
-    #! Need to assign when file changes
-    dataLoc(date=filler)
+    # ! Need to assign when file changes
+    current_time = datetime.datetime.now()
+    next_day = current_time + datetime.timedelta(hours=12)
+    dataLoc(date=next_day)  # todo verify MAYBE read previous file name
 
     # 3rd: Delete uploaded files
     # ! implement once operable
@@ -169,40 +172,44 @@ def uploadFiles():
 
 # endregion
 
-# region Local Files
 
-# delete files #? mark with flags for deletion?
+# region Local Files
+# delete files # ? mark with flags for deletion?
 def deleteFiles(path):
     '''
     Deletes files after upload verification.
     TODO: Add file types to mark
     '''
-    global file_ext_del, safe_dirs
-    # option 1: methodically, seperately delete each file. Can look for flags or unique filetype
-    for root,dirs,files in os.walk('projects',topdown=False):
+    # option 1: methodically, seperately delete each file.
+    # Can look for flags or unique filetype
+    for root, dirs, files in os.walk('projects', topdown=False):
         # skip any roots or directories we want to blacklist
         if any(item in root for item in safe_dirs):
             continue
 
-        # If there are files in the directory delete based on #! extension or flag
+        # If there are files in the directory delete based on
+        # # ! extension or flag
         if files == []:
             pass
         elif type(files) is list:
             for file in files:
                 if file.rpartition('.')[2] in file_ext_del:
                     # log error(f"deleting {file}")
+                    print(join(root, file))
                     # os.remove(join(root,file))
-        
-        # Delete the directory if emptied  #? force delete if there is something else?
+
+        # Delete the directory if emptied
+        # ? force delete if there is something else?
         if dirs == []:
             pass
         else:
             for d in dirs:
                 if d in safe_dirs:
                     continue
-                d_len = len(os.listdir(join(root,d)))
+                d_len = len(os.listdir(join(root, d)))
                 if d_len == 0:
                     # logerror(f"deleting empty dir {d}")
+                    print(join(root, d))
                     # os.rmdir(join(root,d))
                 else:
                     # log log(f"{d_len} files in {d}")
@@ -214,25 +221,27 @@ def deleteFiles(path):
     # os.rmdir to delete an empty directory
 
     # option 2: fast with shutil
-    # shutil.rmtree to delete a whole tree 
+    # shutil.rmtree to delete a whole tree
+
 
 def dataSize(path):
     'Get the size data in path, the total disk usage.'
     total, used, free = shutil.disk_usage('/')
-    
+
     file_size = 0
-    for root,dirs,files in os.walk('projects',topdown=False):
-        # skip any roots or directories we want to 
+    for root, dirs, files in os.walk('projects', topdown=False):
+        # skip any roots or directories we want to
         # if any(item in root for item in safe_dirs):
         #     continue
 
-        # If there are files in the directory delete based on #! extension or flag
+        # If there are files in the directory delete based on
+        # # ! extension or flag
         if files == []:
             pass
         elif type(files) is list:
             for file in files:
                 # get each filesize and add it to the total
-                fs = path.getsize(join(root,file))
+                fs = path.getsize(join(root, file))
                 file_size = file_size + fs
 
         print(f"Total file size is now {file_size}")
@@ -240,21 +249,22 @@ def dataSize(path):
         print(f"Directories ares{dirs}")
         print(f"Files are {files}\n\n")
 
-    def b2gb(val): 
+    def b2gb(val):
         'Turn bytes value into gigabytes'
         return (val / (1024**3))
-    
+
     # If upload at a certaint file size
     file_size_gb = b2gb(file_size)
-    
+
     # If upload based on disk storage
     total_percent_used = used/total
-    total_percent_free = free/total
+    # total_percent_free = free/total
 
     # If upload based on how much the system storage is using
     total_percent_by_station = file_size/total
 
     return file_size_gb, total_percent_used, total_percent_by_station
+
 
 def dataLoc(date, format=''):
     '''
@@ -275,7 +285,7 @@ def dataLoc(date, format=''):
     global data_folder_full
     global current_data_folder
     # Make new days data folder if doesn't exist
-    #! Add naming convention addition incase multiple folder per day [hour?]
+    # ! Add naming convention addition incase multiple folder per day [hour?]
     current_data_folder = date.strftime(data_folder_format)
     data_folder_full = f"{wkdir}/Data/{current_data_folder}"
 
@@ -284,12 +294,10 @@ def dataLoc(date, format=''):
         os.mkdir(f"{data_folder_full}/{img_folder_format}")
         # start sensor csv
         # start camera csv
-        #? open( {file}, 'a').clos()
-        #? Start new log?
+        # ? open( {file}, 'a').clos()
+        # ? Start new log?
 
-    
-
-    if format != '': 
+    if format != '':
         return time.strftime(f"{data_folder_full}/{format}")
     return None
 
@@ -308,10 +316,12 @@ def getSun(lati=42.279594, long=-83.732124):  # Get working file
     cur = datetime.datetime.now(datetime.timezone.utc)
     tmrw = cur + datetime.timedelta(1)
     yest = cur - datetime.timedelta(1)
-  
+
     # Initialize Lists
     days = [yest, cur, tmrw]
-    y = []; c = []; t = []
+    y = []
+    c = []
+    t = []
     dlist = [y, c, t]
     j = 0
     sun_events = []
@@ -321,35 +331,35 @@ def getSun(lati=42.279594, long=-83.732124):  # Get working file
         # Get days's sunrise and sunset then convert to UTC
         sr = sun.get_sunrise_time(i)
         ss = sun.get_sunset_time(i)
-        
+
         dlist[j].append(ss)
         dlist[j].append(sr)
         sun_events.append(ss)
         sun_events.append(sr)
 
         j += 1
-    
 
     # Find next instance of sun
     future_events = []
     for x in sun_events:
-        
+
         if cur < x:
             future_events.append(x)
             # print(f"Event time: {x.strftime("%h %d %H:%M")}")
-            
+
         else:
             pass
-    
+
     next_event = min(future_events)
     idx_min = sun_events.index(next_event)
     sun_does_whaaat = sr_or_ss[idx_min]
     print("Next Sun Event: ", next_event.strftime("%h %d %H:%M"), " at ",
           sun_does_whaaat, ".\n")
-    
+
     return next_event, sun_does_whaaat
 
 # endregion
+
 
 # ? Use this as format to update??
 def updateJobs():  # Turn off the cam
@@ -357,32 +367,36 @@ def updateJobs():  # Turn off the cam
     Used to turn the camera on/off dependant on the time of day.
     Currently on between 12pm and 7 pm if the function is called.
     '''
-    return None
     global cameraoff, camera_period
     # Cancel all jobs with the camera
-    schedule.clear('camera')   
+    schedule.clear('camera')
 
     # get sun event
-    # todo use gps 
+    # todo use gps
     a2_lat = 42.279594
     a2_lon = -83.732124
-    next_job_update, set_or_rise = get_sun(a2_lat, a2_lon)
+    next_job_update, set_or_rise = getSun(a2_lat, a2_lon)
 
     if next_job_update is None:
         sys.exit('No scheduling time')
     else:
-        upJob_time = next_job_update.strftime('%H:%M')  # String for next job update
-        print(f"Next Job scheduled for {upJob_time} \n(From: {next_job_update})")
-        schedule.every().day.at(upJob_time).do(update_jobs).tag('camera')  # Update Camera Status at next sunsrise/sunset
+        # String for next job update
+        upJob_time = next_job_update.strftime('%H:%M')
+        print(f"Next Job scheduled for {upJob_time} \n"
+              f"(From: {next_job_update})")
+
+        # Update Camera Status at next sunsrise/sunset
+        schedule.every().day.at(upJob_time).do(updateJobs).tag('camera')
 
     # if curtime > today_sr and curtime < today_ss:
     #     pass
     # elif (curtime > today_ss and curtime < tmrw_sr) or curtime < today_sr:
     #     schedule.every(10).seconds.do(data_processing).tag('camera')
     # else:
-    #     print(f"______________________________________________________________\n" 
+    #     print("_"*62 + "\n"
     #           f"UNKNOWN ERROR WITH SCHEDULING HAS OCCURRED\n"
-    #           f"Current time: {curtime} \n Todays sunrise: {today_sr} \n Todays"
+    #           f"Current time: {curtime} \n"
+    #           f"Todays sunrise: {today_sr} \n Todays"
     #           f"sunset: {today_ss} \n "
     #           f"Tommorows sunrise: {tmrw_sr} \n ")
 
@@ -390,12 +404,11 @@ def updateJobs():  # Turn off the cam
         cameraoff = False
         camera_period = 300
         print('CAMERA ON\n')
-        schedule.every(10).seconds.do(data_processing).tag('camera')
     elif set_or_rise == "Sunset":
         cameraoff = True
         print('CAMERA OFF\n')
     else:
-        print(f"Error with collecting next sun event type")
+        print("Error with collecting next sun event type")
 
 
 # region hdf5 functions
@@ -404,6 +417,7 @@ def createHDF5(file_name):
     Creates an empty hdf5 files
     '''
     pass
+
 
 def build_hdf(date, gps, temp, pres, mag, img, file):
     '''
@@ -426,8 +440,8 @@ def build_hdf(date, gps, temp, pres, mag, img, file):
                          data=[date])
         i.create_dataset("aurora img", maxshape=(None, 512, 512, 3),
                          dtype='uint8', data=[img])
-        i.create_dataset("aurora flag", maxshape=(None,), dtype=h5py.string_dtype(),
-                         data=['Start of file'])
+        i.create_dataset("aurora flag", maxshape=(None,),
+                         dtype=h5py.string_dtype(), data=['Start of file'])
 
 
 def add_data(date, gps, temp, pres, mag, img, file, camflag, aurflag):
@@ -471,6 +485,7 @@ def hdf(mag, pres, temp, gps, img, file, camflag, aurflag):
 
 # endregion
 
+
 # region helper functions
 # Run commands from strings
 def runStr(cmd: str):
@@ -478,10 +493,10 @@ def runStr(cmd: str):
     command = cmd.split(' ')
     subprocess.run(command, check=True)
 
-# endregion
 
-#? Is this going to be a script to run, an object, or a method holder [?]
+# endregion
+# ? Is this going to be a script to run, an object, or a method holder [?]
 while __name__ == '__main__':
-    # runs any pending programs every hour to account for variable size thresholds                                                                                                                                                                 
+    # runs pending programs hourly to account for variable size thresholds
     schedule.run_pending()
     time.sleep(60*60)

@@ -521,6 +521,7 @@ class AuroraImage(object):
         '''
         if masks is None:
             log.error('No masks where given to compare.')
+            masks = self.maskDict.keys()
 
         cur_img = self.applyMasks(masks)
         pre_img = other.applyMasks(masks)
@@ -546,24 +547,18 @@ class AuroraImage(object):
         '''
         # make copy of raw image to apply masks
         im_masked = np.copy(self.image)
-        not_masks = True
 
         # Get masks as list
         if masks is None:
             # if no masks are provided, apply generated masks
             log.info('No masks were provided, using all in maskDict')
             masks = self.maskDict.keys()
-        elif type(masks) is str:
-            # If single mask is passed, make it a list
-            masks = [masks]
-        elif type(masks[0]) is np.ndarray:
-            # Not made to handle a passed mask
-            warning_msg = 'A masked array was provided instead of a key.'
-            log.warning(warning_msg)
-            not_masks = False
         elif type(masks) in [list, type({}.keys())]:
             # Correct type
             pass
+        elif type(masks) is str:
+            # If single mask is passed, make it a list
+            masks = [masks]
         else:
             error_msg = f'Masks is unexpected type {type(masks)}'
             log.error(error_msg)
@@ -571,11 +566,14 @@ class AuroraImage(object):
 
         # Iterate through masks
         for m in masks:
-            if not_masks is True:
-                cur_mask = self.maskDict[m]
-            else:
+            if type(m) is np.ndarray:
+                # Not made to handle a passed mask
+                warning_msg = 'A masked array was provided instead of a key.'
+                log.warning(warning_msg)
                 cur_mask = m
-            
+            else:
+                cur_mask = self.maskDict[m]
+
             if cur_mask.shape.count(3) == 1:
                 # if mask is already 3D apply
                 im_masked *= cur_mask
@@ -748,14 +746,20 @@ class AuroraImage(object):
         plt.imshow(self.image)
 
 
+def getAura(file=''):
+    if file == '':
+        log.error('No file given')
+        return None
+
+    aura = AuroraImage(file)
+    aura.maskNormImage()
+    aura.save_file = outfile
+    return aura
+
+
 # if run with a file given to read, a masked grid is created
 if infile is not None:
-    aura = AuroraImage(infile)
-    aura.allDefaultMasks()
-    aura.save_file = outfile
-    do_masks = []
-    # Trial stuff
-    # aura.maskDict.pop('Dominat Percent Green Mask')
-    # aura.stackImages(height=4)
-    print(f'Low:{ratio_low}\nHigh:{ratio_high}\nDom:{dom_percent}')
+    aura0 = getAura(infile)
+
+do_masks = ['Norm >Mean RED']
 log.info(get_memory("Script end"))
