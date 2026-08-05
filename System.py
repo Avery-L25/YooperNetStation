@@ -24,25 +24,21 @@ Uploading Files
 Can be called using startStation() if using a seperate script.
 '''
 
-# sensor interfacing functions
-from YooperCam import YooperCam
-from Sensors.barom_therm_data_collection import temp_n_pres
-from Sensors.mag_data import mag_data
-import filemanager as fman
-
-# support functions
-import pyzwoasi as pza
 import os
 from os import path
 import sys
 import toml
-import csv
+import logging
 import time
+from copy import copy
 from multiprocessing import Process
-# import schedule
-# import datetime
-# import numpy as np
-# from ischedule import schedule, run_pending
+import cv2 as cv  # Image management
+import pyzwoasi as pza  # Camera Library
+from YooperCam import YooperCam  # Camera Interface for YooperNet
+from auroral_image_check import AuroraImage  # Image masking
+from Sensors.barom_therm_data_collection import temp_n_pres
+from Sensors.mag_data import mag_data
+import filemanager as fman
 
 # region Initialize Variables
 # Get working directory and repository directory
@@ -54,22 +50,43 @@ config_file_path = wkdir + "/.YooperConfig.toml"
 yoop_config = toml.load(config_file_path)
 
 # Get Storage Locations
-img_folder_path = wkdir + yoop_config['paths']['Camera_Images_Collection']
-# img_info_path = yoop_config['paths']['Camera_Info_File']
-sensor_file_path = wkdir + yoop_config['paths']['Sensor_Data_Folder']
+yoop_paths = yoop_config['paths']
+img_folder = path.join(wkdir, yoop_paths['Images_Folder'])
+hdf_folder = path.join(wkdir, yoop_paths['HDF5_Folder'])
+log_folder = path.join(wkdir, yoop_paths['Log_Folder'])
 # ? If using hdf5 or uploading using python instead of RCLONE
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']
-sensor_file = sensor_file_path + "testing.csv"
 
 # Initialize System Variables
+yoop_aurora = yoop_config['aurora']
+HIGH_IMG_RATE = yoop_aurora['Aurora_CapRate']
+LOW_IMG_RATE = yoop_aurora['No_Aurora_CapRate']
+AURORA_THRESHOLD = yoop_aurora['Aurora_MSE_Threshold']
+AFTER_FLAG_TIME = yoop_aurora['Detection_After_Time']
 exposure_time = 30
+image_rate = HIGH_IMG_RATE
+sensor_feed_rate = yoop_config['sensors']['Data_Rate']
 
 # initializes scheduling # ! Implement for Uploading
+# import schedule
 # schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
 # schedule.every().day.at("16:00").do(upload_data)  # upload hdf5 file at 4pm
 # schedule.every().day.at("08:00").do(cam_off)  # turn camera off after 8am
 # schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
 
+# Log
+logging.basicConfig()
+DEBUG2 = 11
+HIGH_DEBUG = 24
+DATA = 28
+
+# Add logging levels
+logging.addLevelName(DEBUG2, "DEBUG2")
+logging.addLevelName(HIGH_DEBUG, "HIGH_DEBUG")
+logging.addLevelName(DATA, "DATA")
+
+log = logging.getLogger("auraCheck")
+log.setLevel(level=30)
 # endregion
 
 
@@ -138,10 +155,19 @@ def captureImage(expSec=30):
         The camera exposure time in seconds. This is for adjustment within
         this script
     '''
-    print("Start Image capturing loop")  # log debug
+    log.debug("Start Image capturing")  # log debug
+    global current_image, previous_image, aurora_flag
+
+    # Get previous image for comparison
+    try:
+        previous_image = copy(current_image)  # type: ignore
+    except NameError:
+        log.debug('No current image to copy')
+        pass
 
     # Take photo
     try:
+        # todo save image here or let YooperCam do it
         sky_img = ycam.shot(return_img=True, exposure=expSec)
     except pza.pyzwoasi.ASIError:
         # todo add error handling
@@ -150,10 +176,15 @@ def captureImage(expSec=30):
         # add a wait, # ? here or a class?
         return  # ! something
 
+    current_image = AuroraImage(sky_img)
+    cv.imwrite('img.png', sky_img)
     # Run aurora check/screen
-    aurora_flag = ycam.isAurora(sky_img)
-    # todo Add exposure frequency or capture delay based on this
-    # todo resize image??
+    try:
+        aurora_flag = current_image - previous_image
+        updateCaptureRate(aurora_flag)
+    except NameError as ne_args:
+        log.debug(ne_args)
+        pass
 
     print('Capturing Finished')  # log debug/info
 
@@ -166,19 +197,15 @@ def getSensorData():
     while True:
         # Read data into dictionary
         mag, pres, temp, gps = _readSensors()
-        sensor_dict = {'Mag X': mag[0], 'Mag Y': mag[1], 'Mag Z': mag[2],
-                       'Pressure': pres, 'Temperature': temp, 'GPS': gps}
+        sens_time = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+        sensor_dict = {'Time': sens_time, 'Mag': mag, 'Pressure': pres,
+                       'Temperature': temp, 'GPS': gps}
 
         # Write dictionary to file
-        with open(sensor_file, 'a', newline='') as cfile:
-            cwrite = csv.DictWriter(cfile, fieldnames=sensor_dict.keys())
-            cwrite.writerow(sensor_dict)
+        fman.hdf(sensor_file, sensor_dict)
 
-        # print # log info/higher info???
-        print(sensor_dict)
-
-        # Set sensor collection frequency
-        time.sleep(5)
+        # Collect data at configured rate
+        time.sleep(sensor_feed_rate)
 
 
 def _readSensors():
@@ -202,30 +229,44 @@ def _readSensors():
     return mag, pres, temp, gps
 
 
-def uploadData(move=True, path=path.join(station_dir, 'Data'), folder='',
-               doUpload=False, flag=''):
+def uploadData(folder='', path=path.join(station_dir, 'Data'), move=True,
+               doUpload=True, flag=''):
     '''
     Upload from the station to a setup remote drive using rclone.
     TODO: Support uploading when storage is getting full.
 
     Parameters
     ----------
-    move: bool
+    folder: str, defaults to \'\'
+        Name of folder to be uploaded, retains name when uploaded.
+    path: str, defaults to \'YooperNet/Data\'
+        Path to the files that need to be updated. Uploads everything in
+        the 'Data' directory by default.
+    move: bool, defaults to True
         If true, rclone will copy the files to drive and delete
         them automatically after a succesful upload. Otherwise, it will
         only copy files.
-    path: str
-        Path to the files that need to be updated. Uploads everything in
-        the 'Data' directory by default.
-    folder: str
-        Folder name on remote drive where data will be uploaded.
-    doUpload: bool
+    doUpload: bool, defaults to True
         If true, upload without checking for any flags/parameters.
         This is intended for end-of-day uploads.
+
+    Examples
+    --------
+    Upload Data in YooperNet/Data/Images to remote.
+    This includes files and subdirectories
+    YooperNet/Data/Images/ |- 12-05-26_images/morning
+                            |- 12-06-26_images/*
+                            |- 12-06-26_23-59-00.png
+    >>> uploadData(folder='Images')
+    YooperNet/Data/Images/
+
     '''
 
     # Get storage information
     station_Gb, total_used, station_used = fman.dataSize(station_dir)
+
+    if doUpload is True:
+        fman.rclone(move=move, path=path, folder=folder)
 
     # Check if a flag is met # todo Figure out if this is necessary
     if doUpload is False:
@@ -236,19 +277,19 @@ def uploadData(move=True, path=path.join(station_dir, 'Data'), folder='',
         elif flag.lower() in ['gb', 'station gb', 'data size', 'size']:
             pass
 
-    if doUpload is True:
-        fman.rclone(move=move, path=path, folder=folder)
-
     # todo Function
 
 
-def updateCaptureRate():
+def updateCaptureRate(aurora_mse):
     '''
     Update the frequency of photos capture by the station.
     '''
-    global exposure_time
+    global image_rate
 
-    exposure_time = exposure_time
+    if aurora_mse > AURORA_THRESHOLD:
+        image_rate = HIGH_IMG_RATE
+    else:
+        image_rate = LOW_IMG_RATE
 
     pass
 
@@ -274,8 +315,14 @@ def startStation():
     try:
         while True:
             # ! This should encapsulate taking the photo, logging, and analysis
+            before = time.time()
             captureImage(expSec=1)
-            time.sleep(1)
+            after = time.time()
+
+            # sleep however long is needed before
+            sleep_for = image_rate - (after - before)
+            if sleep_for > 0:
+                time.sleep(sleep_for)
     except KeyboardInterrupt:
         # Stop the sensors if manually killed
         sensors_proc.kill()
@@ -300,6 +347,7 @@ if __name__ == '__main__':
     startStation()
 
     # run the program with period = 10 sec
+    # from ischedule import schedule, run_pending
     # schedule(timer, interval=2)
     # schedule(data_processing, interval=2)
     # run_loop(return_after=3)

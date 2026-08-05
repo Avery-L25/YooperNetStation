@@ -25,7 +25,7 @@ VENV_DIR = f"{PROJECT_DIR}/{VENV_NAME}"
 GIT_REPO = f"https://github.com/Avery-L25/{PROJECT_NAME}.git"
 SERVICE_USER = "python_service"
 SERVICE_DIR = "/etc/systemd/system"
-
+DIRS_LIST = ['Data/images', 'Data/hdf5', 'Data/logs']
 
 # Local Files
 def getRef(fname):
@@ -201,6 +201,18 @@ except subprocess.CalledProcessError as e:
           + f"\nError Code: {bold(e.returncode)}")
     pass
 # TODO: Make section that assigns files to system (ie. yoopercam when called)
+
+# 5: Setup Data Files
+# ! update with toml stuff
+# yoop_config = toml.load(toml_file)
+# data_dirs =  []
+# for i in list(yoop_config['paths'])
+#   if i.rpartition('_').lower() == 'folder':
+#       data_dirs.append(i)
+for dirs in DIRS_LIST:
+    if os.path.exists(dirs) is False:
+        os.makedirs(dirs)
+
 
 # ============================================
 # region Setup Services

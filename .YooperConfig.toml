@@ -1,35 +1,45 @@
 [controllables]
-AutoExpMaxExpMS = 3000000                   
-AutoExpMaxGain = 225                        
-AutoExpTargetBrightness = 100               
-BandWidth = 40                              #Default: 40 # 0- 100 
-Exposure = 30000000  # in micro-seconds    # Default: 1000000 (1 second)
-Flip = 0                                   # Default: 0
-Gain = 100                                  # Default: 100
-HardwareBin = 0                             # Default: 0
-HighSpeedMode = 0                       
-MonoBin = 0                                 
-Offset = 95                                 # Default: 95 True Max is 100
-WB_B = 95  # DO NOT CHANGE WHITE BALANCE    # Default: 95
-WB_R = 52                                   # Default: 52
+AutoExpMaxExpMS = 3000000
+AutoExpMaxGain = 225
+AutoExpTargetBrightness = 100
+BandWidth = 40  #Default: 40 # 0- 100
+Exposure = 30000000  # in micro-seconds  # Default: 1000000 (1 second)
+Flip = 0  # Default: 0
+Gain = 100  # Default: 100
+HardwareBin = 0  # Default: 0
+HighSpeedMode = 0
+MonoBin = 0
+Offset = 95  # Default: 95 True Max is 100
+WB_B = 95  # DO NOT CHANGE WHITE BALANCE  # Default: 95
+WB_R = 52  # Default: 52
 
-[roi]                                       # Default is centered for a 20 MP 1" Sensor with a 2/3" Lens
-start_x = 1374                              # Default: 1374
-start_y = 464                               # Default: 464
-width = 2744    # Must be a multiple of 8   # Default: 2744
-height = 2744   # Must be a multiple of 2   # Default: 2744
-binning = 1                                 # Default: 1 
-imageType = "RGB24"                         # Default: "RGB24"
+[roi]  # Default is centered for a 20 MP 1" Sensor with a 2/3" Lens
+start_x = 1374  # Default: 1374
+start_y = 464  # Default: 464
+width = 2744    # Must be a multiple of 8  # Default: 2744
+height = 2744   # Must be a multiple of 2  # Default: 2744
+binning = 1  # Default: 1
+imageType = "RGB24"  # Default: "RGB24"
+
+[aurora]
+No_Aurora_CapRate = 300  # Seconds. Default: 300 (5 minutes)
+Aurora_CapRate = 60 # Seconds. Default: 60 (1 minute)
+Detection_After_Time = 600 # Seconds. Default: 600 (10 minutes)
+Aurora_MSE_Threshold = 0  # Min MSE Valuse. Default:
+
+[sensors]
+Data_Rate = 5  # Seconds. Default: 5
 
 [paths]
-Camera_Images_Collection="/Data/camera_images/" 
-Camera_Info_Folder="/Data/image_info_files/"
-Sensor_Data_Folder="/Data/sensor_files/"
+Images_Folder="Data/images/"
+HDF5_Folder="Data/hdf5/"
+Log_Folder="Data/logs/"
+RClone_Remote="remote:"
 # GDrive_Folder_ID=0
 # Token_Path=0
 # Credits_Path=0
 
-[formats]  
+[formats]
 Data_Folder         ="%Y-%m-%d_Data"
 Image_Name_Format   ="%Y-%m-%d_%H-%M-%S_exp"
 Image_Folder_Format ="%Y-%m-%d_Images"

@@ -29,7 +29,7 @@ dom_percent = 1.05
 IMAGE_EXTENSIONS = ['png', 'jpeg', 'jpg', 'jpe', 'webp']
 DIC_RGB = {0: 'RED', 1: 'GREEN', 2: 'BLUE', slice(0, 3): 'RGB'}
 RGB_CHANNEL = slice(0, 3)
-
+DIC_RGB2CHANNEL = {'RED': 0, 'GREEN': 1, 'BLUE': 2, 'RGB': slice(0, 3)}
 # region Input
 parser = ArgumentParser(description=__doc__,
                         formatter_class=RawDescriptionHelpFormatter)
@@ -170,7 +170,22 @@ class AuroraImage(object):
 
     # region Masks
 
-    def normMask(self, channels=[0, 1, 2]):
+    def getMask(self, mask_type, **kwargs):
+        '''
+        Given the type of mask and a list of parameters,
+        create the necessary mask.
+
+        Parameters
+        ----------
+        mask_type: func
+            The masking function to be applied.
+        inverse: bool, defaults to False
+            If True, get the inverse of the mask.
+        '''
+        # mask = mask_type(kwargs)
+        pass
+
+    def normMask(self, channels=[0, 1, 2], std_dev=None):
         '''
         Returns norm masks for r, g, and b channels.
         If image is provided, automatically do masked version.
@@ -190,6 +205,12 @@ class AuroraImage(object):
         channels: list, defaults to [0,1,2]
             Choose which channels to get masks for.
             Defaults to all RGB channels
+        std_dev: list, defaults to None
+            Choose which multiple of the standard deviation
+            to create additional masks for.
+            If no list is given, defaults to [0] or
+            [-1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2] if
+            thoroughNorm is True.
         '''
         img_ref = self.image.astype('uint16')
         mask_dict = self.maskDict
@@ -197,8 +218,23 @@ class AuroraImage(object):
                            np.square(img_ref[:, :, 1]) +
                            np.square(img_ref[:, :, 2]))
 
+        # Ensure variables are lists for iteration
+        if type(channels) is int:
+            channels = [channels]
+
+        if type(std_dev) is float:
+            std_dev = [std_dev]
+        elif type(std_dev) is int:
+            std_dev = [std_dev]
+        elif std_dev is None:
+            if self.thoroughNorm is True:
+                std_dev = [-1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2]
+            else:
+                std_dev = [0]
+
         # Set up masking variables
         mean_masks = []
+
         # If dividing by 0, it is 0/0
         sum_squares_rgb[sum_squares_rgb == 0] = 1
 
@@ -237,17 +273,19 @@ class AuroraImage(object):
 
         return mean_masks
 
-    def neutralMask(self, Num, Den, uBnd=255.0, lBnd=0.0):
+    def neutralMask(self, Num=None, Den=None, uBnd=255.0, lBnd=0.0):
         '''
         Creates a neutral mask between two numpy array given ratios.
         If a bound is not provided, defaults to extremes.
 
         Parameters
         ----------
-        Num: np.ndarray
-            The numerator array for the mask.
-        Den: np.ndarray
-            The denominator array for the mask.
+        Num: int, defaults to 1; np.ndarray
+            The numerator channel for the mask.
+            If an array is provided, it will be used directly.
+        Den: int, defaults to 1; np.ndarray
+            The denomiator channel for the mask.
+            If an array is provided, it will be used directly.
         uBnd: float, default 255
             The upper bound for the mask.
             When the ratio is no longer 'neutral'.
@@ -283,6 +321,40 @@ class AuroraImage(object):
             [True,  True,  True]])
 
         '''
+
+        # Allow flexibility in masking
+        def getArray(val, val_name=''):
+            'Take Num or Den and ensure it is an array'
+            if type(val) is int:
+                # Get RGB channel of integer
+                val = self.image[:, :, val]
+            elif type(val) is str:
+                # attempy to use string as key
+                try:
+                    chan = DIC_RGB2CHANNEL[val]
+                except KeyError:
+                    log.error(f'Unknown key passed: {val}, try using an '
+                              'integer. Defaulting to green channel.')
+                    chan = 1
+                val = self.image[:, :, chan]
+            elif type(val) is np.ndarray:
+                # Used for mask
+                pass
+            elif val is None:
+                log.error('No value passed, defaulting to green channel.')
+                val = self.image[:, :, 1]
+            else:
+                log.critical(f"Uknown type of {val_name} passed: {type(val)}"
+                             " is not accepted. Defaulting to green channel.")
+                val = self.image[:, :, 1]
+
+            # return val as array
+            return val
+
+        # Ensure Denominator and Numerator are arrays.
+        Den = getArray(Den, 'Denominator')
+        Num = getArray(Num, 'Numerator')
+
         # Find Greater/Less than conditions
         upCon = uBnd * Den
         loCon = lBnd * Den
@@ -325,6 +397,20 @@ class AuroraImage(object):
         '''
         image = self.image
         rgb = [0, 1, 2]
+
+        # Handle potential Key/Type Errors
+        if type(Channel) is str:
+            try:
+                Channel = DIC_RGB2CHANNEL[Channel.upper()]
+            except KeyError:
+                log.error(f'KeyError, {Channel} not in {DIC_RGB2CHANNEL} '
+                          'defaulting to green')
+                Channel = 1
+        elif type(Channel) is not int:
+            log.error(f'TypeError, {Channel} not in {DIC_RGB2CHANNEL} '
+                        'defaulting to green')
+            Channel = 1
+
         rgb.remove(Channel)
 
         return ((image[:, :, Channel] >= image[:, :, rgb[0]] * dom)
@@ -738,7 +824,7 @@ class AuroraImage(object):
                 filtered_image *= [filtered_image[:, :, c] >= min][0]
 
         if image is None:
-            return None
+            return filtered_image
         else:
             return filtered_image
 
@@ -752,14 +838,35 @@ def getAura(file=''):
         return None
 
     aura = AuroraImage(file)
-    aura.maskNormImage()
+    # aura.maskNormImage()
     aura.save_file = outfile
     return aura
 
 
+def makeBasicImages(aura=''):
+    'Make 3 images containing default masks'
+    if type(aura) is AuroraImage:
+        aura.save_file = 'GridNorm.jpeg'
+        aura.maskNormImage()
+        aura.stackImages()
+        aura.maskDict.clear()
+
+        aura.save_file = 'GridStats.jpeg'
+        aura.maskStatsImage()
+        aura.stackImages()
+        aura.maskDict.clear()
+
+        aura.save_file = 'GridBasic.jpeg'
+        aura.maskBasicImage()
+        aura.stackImages()
+        aura.maskDict.clear()
+    else:
+        print('Need AuroraImage object to run')
+        return None
+
 # if run with a file given to read, a masked grid is created
 if infile is not None:
-    aura0 = getAura(infile)
+    aura = getAura(infile)
 
 do_masks = ['Norm >Mean RED']
 log.info(get_memory("Script end"))

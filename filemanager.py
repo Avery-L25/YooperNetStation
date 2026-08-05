@@ -32,7 +32,7 @@ from googleapiclient.http import MediaFileUpload  # , MediaUpload
 
 # ## Load Config Files
 wkdir = path.dirname(path.realpath(__file__))
-config_file_path = join(wkdir, "/.YooperConfig.toml")
+config_file_path = join(wkdir, ".YooperConfig.toml")
 yoop_config = toml.load(config_file_path)
 
 # Write Storage Locations
@@ -42,7 +42,7 @@ img_info_path = wkdir + yoop_paths['Camera_Info_Folder']
 sensor_file_path = wkdir + yoop_paths['Sensor_Data_Folder']
 # Google folder ID for individual file uploads
 # ? If using hdf5 or uploading using python instead of RCLONE
-google_folder_id = yoop_paths['GDrive_Folder_ID']
+# google_folder_id = yoop_paths['GDrive_Folder_ID']
 
 # Get formats for storage locations/files
 yoop_form = yoop_config['formats']
@@ -55,7 +55,7 @@ sensor_data_format = yoop_form['Sensor_Data_Format']
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 file_ext_del = ['png', 'csv']
 safe_dirs = ['Sensors']
-rclone_remote = yoop_paths['REMOTE_CONFIG']
+rclone_remote = yoop_paths['RClone_Remote']
 
 
 # region Upload
@@ -412,10 +412,24 @@ def updateJobs():  # Turn off the cam
 
 
 # region hdf5 functions
-def createHDF5(file_name):
+def hdf(file, dicty):
     '''
     Creates an empty hdf5 files
+
+    Cannot handle datetime datatype, must be a string.
     '''
+    if os.path.exists(file):
+        with h5py.File(file, "a") as f:
+            for k, v in dicty.items():
+                k = str(k)
+                f[k].resize((f[k].shape[0] + 1), axis=0)  # type: ignore
+                f[k][-1] = v  # type: ignore
+    else:
+        with h5py.File(file, "w") as f:
+            for k, v in dicty.items():
+                f.create_dataset(str(k), maxshape=((None,)+np.shape(v)),
+                                 data=[v], chunks=True)
+
     pass
 
 
@@ -472,7 +486,7 @@ def add_data(date, gps, temp, pres, mag, img, file, camflag, aurflag):
                 i['aurora flag'][-1] = "False"
 
 
-def hdf(mag, pres, temp, gps, img, file, camflag, aurflag):
+def pass2hdf(mag, pres, temp, gps, img, file, camflag, aurflag):
     global utc_now
 
     d_t = np.datetime64('now').item().strftime('%Y_%m_%d_%H_%M_%S')
@@ -495,8 +509,4 @@ def runStr(cmd: str):
 
 
 # endregion
-# ? Is this going to be a script to run, an object, or a method holder [?]
-while __name__ == '__main__':
-    # runs pending programs hourly to account for variable size thresholds
-    schedule.run_pending()
-    time.sleep(60*60)
+
