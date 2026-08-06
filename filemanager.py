@@ -11,6 +11,7 @@ import time
 import datetime
 import schedule
 from suntime import Sun
+import logging
 import h5py
 import toml
 import shutil
@@ -28,9 +29,9 @@ yoop_config = toml.load(config_file_path)
 
 # Write Storage Locations
 yoop_paths = yoop_config['paths']
-img_folder_path = wkdir + yoop_paths['Camera_Images_Collection']
-img_info_path = wkdir + yoop_paths['Camera_Info_Folder']
-sensor_file_path = wkdir + yoop_paths['Sensor_Data_Folder']
+img_folder_path = join(wkdir, yoop_paths['Images_Folder'])
+img_info_path = join(wkdir, yoop_paths['HDF5_Folder'])
+sensor_file_path = join(wkdir, yoop_paths['Log_Folder'])
 
 
 # Get formats for storage locations/files
@@ -45,6 +46,20 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 file_ext_del = ['png', 'csv']
 safe_dirs = ['Sensors']
 rclone_remote = yoop_paths['RClone_Remote']
+
+# Log
+logging.basicConfig()
+DEBUG2 = 11
+HIGH_DEBUG = 24
+DATA = 28
+
+# Add logging levels
+logging.addLevelName(DEBUG2, "DEBUG2")
+logging.addLevelName(HIGH_DEBUG, "HIGH_DEBUG")
+logging.addLevelName(DATA, "DATA")
+
+log = logging.getLogger("auraCheck")
+log.setLevel(level=10)
 
 
 # todo check rclone setup for installer
@@ -359,18 +374,20 @@ def hdf(file, dicty):
 
     Cannot handle datetime datatype, must be a string.
     '''
-    if os.path.exists(file):
+    if path.exists(file) & path.isfile(file):
         with h5py.File(file, "a") as f:
             for k, v in dicty.items():
                 k = str(k)
                 f[k].resize((f[k].shape[0] + 1), axis=0)  # type: ignore
                 f[k][-1] = v  # type: ignore
-    else:
+    elif file.rpartition('.')[-1] == 'hdf5':
+        os.makedirs(file.rpartition('/')[0])
         with h5py.File(file, "w") as f:
             for k, v in dicty.items():
                 f.create_dataset(str(k), maxshape=((None,)+np.shape(v)),
                                  data=[v], chunks=True)
-
+    else:
+        log.warning(f'File is not hdf5: {file}')
     pass
 
 

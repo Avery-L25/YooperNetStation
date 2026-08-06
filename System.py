@@ -46,7 +46,7 @@ import filemanager as fman
 wkdir = path.dirname(path.realpath(__file__))
 
 # Load Config Files
-yoop_config = toml.load(path.join(wkdir, "/.YooperConfig.toml"))
+yoop_config = toml.load(path.join(wkdir, ".YooperConfig.toml"))
 
 # Get Storage Locations
 yoop_paths = yoop_config['paths']
@@ -167,7 +167,7 @@ def captureImage(expSec=30):
         The camera exposure time in seconds. This is for adjustment within
         this script
     '''
-    log.debug("Start Image capturing")  # log debug
+    log.debug("Start Image capturing")
     global current_image, previous_image, aurora_flag
 
     # Get previous image for comparison
@@ -179,40 +179,50 @@ def captureImage(expSec=30):
 
     # Take photo
     try:
-        # todo save image here or let YooperCam do it
         sky_img = ycam.shot(return_img=True, exposure=expSec)
     except pza.pyzwoasi.ASIError:
         # todo add error handling
-        print("Failed to get image, trying again.")  # log warning/error
-        # ycam.writeData()
-        # add a wait, # ? here or a class?
-        return  # ! something
+        log.error("Failed to get image, trying again.")
+
+        return None
 
     current_image = AuroraImage(sky_img)
-    cv.imwrite('img.png', sky_img)
+    cv.imwrite(path.join(img_folder,
+                         dt.datetime.now(dt.UTC).strftime(image_file_format)),
+               sky_img)
+
     # Run aurora check/screen
     try:
         aurora_flag = current_image - previous_image
         updateCaptureRate(aurora_flag)
     except NameError as ne_args:
         log.debug(ne_args)
-        pass
+    except KeyError as ke:
+        log.error(f'Key for image comparison mask \'{ke}\' not found.')
 
-    print('Capturing Finished')  # log debug/info
+    log.debug('Capturing Finished')
 
 
 def getSensorData():
     '''
-    Get sensor data and write to appropriate file.
-    TODO: Secondary MAG data
+    Get sensor data and collection time.
+    Write data to HDF5 file.
+    Wait at appropriate rate.
+
+    TODO: Second magnetometer data collection
+          GPS data collection
     '''
     while True:
         # Read data into dictionary
         mag, pres, temp, gps = _readSensors()
+
+        # HDF5 needs time as string
         sens_time = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
         sensor_dict = {'Time': sens_time, 'Mag': mag, 'Pressure': pres,
                        'Temperature': temp}
         # add {'GPS': gps} after code functions
+
+        log.debug(f"Sensor data written at {sens_time}")
 
         # Write dictionary to file
         fman.hdf(sensor_file, sensor_dict)
@@ -238,7 +248,6 @@ def _readSensors():
     # GPS code is not complete
     gps = None  # todo complete gps code
 
-    # log each individually here?
     return mag, pres, temp, gps
 
 
@@ -314,11 +323,22 @@ def getStorageLocations():
     global sensor_file, img_folder, camera_file, log_file
 
     def makePath(format):
-        path2make = dt.datetime.now(dt.UTC).strftime(format)
-        if os.path.exists(path2make) is False:
-            os.makedirs(path2make)
-        return path.realpath(path2make)
+        # Get path for the correct data
+        fpath = dt.datetime.now(dt.UTC).strftime(format)
 
+        if os.path.exists(fpath) is False:
+            # Create path if it doesn't exists
+            if fpath.partition('.')[-1] == '':
+                # if directory passed, make full directory
+                os.makedirs(fpath)
+            else:
+                # if a file is passed, make path to file
+                os.makedirs(fpath.rpartition('/')[0])
+
+        # return formatted path
+        return path.realpath(fpath)
+
+    # Get working paths
     img_folder = makePath(image_folder_format)
     camera_file = makePath(camera_file_format)
     sensor_file = makePath(sensor_file_format)
@@ -375,6 +395,7 @@ if __name__ == '__main__':
     print("\n"*3)
 
     # start the station for operation
+    getStorageLocations()
     startStation()
 
     # run the program with period = 10 sec

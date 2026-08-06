@@ -178,7 +178,7 @@ class YooperCam(ZWOCamera):
         if imgName == '':
             # ?  {something with date }{exposure}{.png or other}
             # ? ---> "2026_05_24_exp10.png" or "26_06_12_shot12.jpg"
-            imgName = dt.now().strftime(self.img_name_format + expSec +
+            imgName = dt.now().strftime(self.img_name_format + str(expSec) +
                                         self.img_extension)
 
         # todo Make directory OR use default path
@@ -458,8 +458,8 @@ class YooperCam(ZWOCamera):
         self.setControllables(**controls)
 
         # Write Storage Locations
-        self.img_folder = yoop_config['paths']['Camera_Images_Collection']
-        self.imgInfoFile = yoop_config['paths']['Camera_Info_Folder']
+        self.img_folder = yoop_config['paths']['Images_Folder']
+        self.imgInfoFile = yoop_config['paths']['HDF5_Folder']
 
         # Write Storage Locations
         self.img_name_format = yoop_config['formats']['Image_Name_Format']
