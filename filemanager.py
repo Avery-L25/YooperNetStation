@@ -6,31 +6,22 @@ This includes when to start new files, name said files, and handling
 authentication necessary in the uploading process.
 '''
 
-import time
-from suntime import Sun
-import schedule
-import datetime
 import numpy as np
-import subprocess
-
+import time
+import datetime
+import schedule
+from suntime import Sun
+import h5py
+import toml
 import shutil
 import sys
 import os
 from os import path  # , listdir
 from os.path import join  # isfile,  getsize, isdir
-import h5py
-import glob
-import toml
+import subprocess
 
-# Upload file using google API
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload  # , MediaUpload
 
-# ## Load Config Files
+# Load Config Files
 wkdir = path.dirname(path.realpath(__file__))
 config_file_path = join(wkdir, ".YooperConfig.toml")
 yoop_config = toml.load(config_file_path)
@@ -40,9 +31,7 @@ yoop_paths = yoop_config['paths']
 img_folder_path = wkdir + yoop_paths['Camera_Images_Collection']
 img_info_path = wkdir + yoop_paths['Camera_Info_Folder']
 sensor_file_path = wkdir + yoop_paths['Sensor_Data_Folder']
-# Google folder ID for individual file uploads
-# ? If using hdf5 or uploading using python instead of RCLONE
-# google_folder_id = yoop_paths['GDrive_Folder_ID']
+
 
 # Get formats for storage locations/files
 yoop_form = yoop_config['formats']
@@ -58,8 +47,7 @@ safe_dirs = ['Sensors']
 rclone_remote = yoop_paths['RClone_Remote']
 
 
-# region Upload
-# Define functions # todo check rclone setup for installer
+# todo check rclone setup for installer
 def rclone(move=True, path='', folder=''):
     '''
     Given a folder (and path???) uploads the folder and its contents to
@@ -95,54 +83,7 @@ def rclone(move=True, path='', folder=''):
     runStr(str_cmd)
 
 
-# Upload data to Google Drive
-def uploadFileToDrive(folder_id: str, file_name: str):
-    '''
-    Upload data to the google drive.
-    '''
-
-    creds = None
-    token_path = '/Token_management/token_2.json'
-    creds_path = '/Token_management/credentials.json'
-
-    # Get credentials for uploading to google drive folder
-    if path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-
-    # Get new credentials if no valid options
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                creds_path, SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-
-        with open(token_path, "w") as token:
-            token.write(creds.to_json())
-
-    # Attempt to upload data
-    try:
-        service = build("drive", "v3", credentials=creds)
-
-        file_metadata = {"name": file_name, "parents": [folder_id]}
-        media = MediaFileUpload(
-            file_name, mimetype="application/x-hdf5", resumable=True
-        )
-
-        file = (
-            service.files()
-            .create(body=file_metadata, media_body=media, fields="id",
-                    supportsAllDrives=True)
-            .execute()
-        )
-        print(f"File ID: {file['id']} uploaded successfully to folder"
-              f"{folder_id}.")
-    except HttpError as error:
-        print(f"An error occurred: {error}")
-
-
+# Do full uploading process. Upload -> Delete -> Update Locations
 def uploadFiles():
     '''
     Uploads data files from the YooperNet station. Creates and/or updates
@@ -170,11 +111,8 @@ def uploadFiles():
     # ! implement once operable
     # shutil(path_to_delete)
 
-# endregion
 
-
-# region Local Files
-# delete files # ? mark with flags for deletion?
+# Delete certain files only.
 def deleteFiles(path):
     '''
     Deletes files after upload verification.
@@ -224,6 +162,7 @@ def deleteFiles(path):
     # shutil.rmtree to delete a whole tree
 
 
+# Find storage used on drive.
 def dataSize(path):
     'Get the size data in path, the total disk usage.'
     total, used, free = shutil.disk_usage('/')
@@ -266,6 +205,7 @@ def dataSize(path):
     return file_size_gb, total_percent_used, total_percent_by_station
 
 
+# Get/Set data storage locations
 def dataLoc(date, format=''):
     '''
     Returns the data collection locations (file/directory) when called.
@@ -303,7 +243,8 @@ def dataLoc(date, format=''):
 
 
 # todo Integrate this into file creation
-def getSun(lati=42.279594, long=-83.732124):  # Get working file
+# Get relative sun location to take images at night
+def getSun(lati=42.279594, long=-83.732124):
     '''
     Calculates the next instance of Sunrise/Sunset using latitude and longitude
     Returns the next time as a datetime.datetime
@@ -325,7 +266,8 @@ def getSun(lati=42.279594, long=-83.732124):  # Get working file
     dlist = [y, c, t]
     j = 0
     sun_events = []
-    sr_or_ss = ["Sunset", "Sunrise", "Sunset", "Sunrise", "Sunset", "Sunrise"]
+    sr_or_ss = ["Sunset", "Sunrise"] * 3
+
     # Get Sunrise/Sunset for 3 days
     for i in days:
         # Get days's sunrise and sunset then convert to UTC
@@ -358,10 +300,9 @@ def getSun(lati=42.279594, long=-83.732124):  # Get working file
 
     return next_event, sun_does_whaaat
 
-# endregion
-
 
 # ? Use this as format to update??
+# Update camera status using sun location
 def updateJobs():  # Turn off the cam
     '''
     Used to turn the camera on/off dependant on the time of day.
@@ -411,7 +352,7 @@ def updateJobs():  # Turn off the cam
         print("Error with collecting next sun event type")
 
 
-# region hdf5 functions
+# Create/Write to hdf file
 def hdf(file, dicty):
     '''
     Creates an empty hdf5 files
@@ -433,80 +374,11 @@ def hdf(file, dicty):
     pass
 
 
-def build_hdf(date, gps, temp, pres, mag, img, file):
-    '''
-    Builds hdf5 file with XXX \'groups\' to write data too.
-    '''
-    print('build hdf')
-    with h5py.File(file, "w") as f:
-        f.create_dataset("date", maxshape=(None,), dtype=h5py.string_dtype(),
-                         data=[date])
-        f.create_dataset("gps", maxshape=(None,), dtype='f', data=[gps])
-        f.create_dataset("temperature", maxshape=(None, 2), dtype='f',
-                         data=[temp])
-        f.create_dataset("pressure", maxshape=(None,), dtype='f', data=[pres])
-        f.create_dataset("magnetic field", maxshape=(None, 3), dtype='f',
-                         data=[mag])
-
-        # create group for images and their own timestamps
-        i = f.require_group("images")
-        i.create_dataset("date", maxshape=(None,), dtype=h5py.string_dtype(),
-                         data=[date])
-        i.create_dataset("aurora img", maxshape=(None, 512, 512, 3),
-                         dtype='uint8', data=[img])
-        i.create_dataset("aurora flag", maxshape=(None,),
-                         dtype=h5py.string_dtype(), data=['Start of file'])
-
-
-def add_data(date, gps, temp, pres, mag, img, file, camflag, aurflag):
-    print('add data')
-    with h5py.File(file, "a") as f:
-        f["date"].resize((f["date"].shape[0] + 1), axis=0)
-        f['date'][-1] = date
-        f["gps"].resize((f["gps"].shape[0] + 1), axis=0)
-        f["gps"][-1:] = gps
-        f["temperature"].resize((f["temperature"].shape[0] + 1), axis=0)
-        f['temperature'][-1] = temp
-        f["pressure"].resize((f["pressure"].shape[0] + 1), axis=0)
-        f['pressure'][-1] = pres
-        f["magnetic field"].resize((f["magnetic field"].shape[0] + 1), axis=0)
-        f['magnetic field'][-1] = mag
-
-        # adds photos and their appropriate timestamp
-        if camflag is True:  # if image was taken upload image
-            i = f.require_group("images")
-            i["date"].resize((i["date"].shape[0] + 1), axis=0)
-            i['date'][-1] = date
-            i['aurora img'][-1] = img
-            i["aurora img"].resize((i["aurora img"].shape[0] + 1), axis=0)
-            i['aurora flag'].resize((i["aurora flag"].shape[0] + 1), axis=0)
-            if aurflag is True:
-                i['aurora flag'][-1] = "True"
-            else:
-                i['aurora flag'][-1] = "False"
-
-
-def pass2hdf(mag, pres, temp, gps, img, file, camflag, aurflag):
-    global utc_now
-
-    d_t = np.datetime64('now').item().strftime('%Y_%m_%d_%H_%M_%S')
-
-    utc_now = datetime.datetime.now(datetime.timezone.utc)
-    if glob.glob(file):
-        add_data(d_t, gps, temp, pres, mag, img, file, camflag, aurflag)
-    else:
-        build_hdf(d_t, gps, temp, pres, mag, img, file)
-
-# endregion
-
-
-# region helper functions
 # Run commands from strings
 def runStr(cmd: str):
     'run a string command as though it is in the terminal'
+    # Turn a string command into a list
     command = cmd.split(' ')
+
+    # Run the command
     subprocess.run(command, check=True)
-
-
-# endregion
-

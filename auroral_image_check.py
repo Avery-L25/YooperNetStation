@@ -134,7 +134,7 @@ class AuroraImage(object):
                     if rawimg is None:
                         raise LookupError('Could not find image file '
                                           + f'\'{imagedata}\'')
-        elif type(imagedata) is np.array:
+        elif type(imagedata) is np.ndarray:
             rawimg = imagedata
         else:
             raise TypeError('Imagedata is not a path or numpy array ' +
@@ -170,7 +170,7 @@ class AuroraImage(object):
 
     # region Masks
 
-    def getMask(self, mask_type, **kwargs):
+    def getMask(self, mask_func, **kwargs):
         '''
         Given the type of mask and a list of parameters,
         create the necessary mask.
@@ -182,10 +182,11 @@ class AuroraImage(object):
         inverse: bool, defaults to False
             If True, get the inverse of the mask.
         '''
-        # mask = mask_type(kwargs)
+        mask = mask_func(**kwargs)
+
         pass
 
-    def normMask(self, channels=[0, 1, 2], std_dev=None):
+    def normMask(self, channel=slice(0, 3), std_dev=0.0):
         '''
         Returns norm masks for r, g, and b channels.
         If image is provided, automatically do masked version.
@@ -193,85 +194,37 @@ class AuroraImage(object):
         When img_ref is uint8 the greater than mean isolates
         aurora better than uint16.
 
-        If the thoroughNorm attribute is True, in addition to
-        the greater than and less than the mean masks, several
-        masks using standard deviation will be made including:
-        > mean - 0.5 * std
-        > mean + 0.5 * std
-        > mean + 2.0 * std
-
         Parameters
         ----------
-        channels: list, defaults to [0,1,2]
+        channels: int | slice, defaults to slice(0, 3)
             Choose which channels to get masks for.
-            Defaults to all RGB channels
-        std_dev: list, defaults to None
-            Choose which multiple of the standard deviation
+            Defaults to all RGB channels.
+        std_dev: float, defaults to 0.0
+            The multiple of the standard deviation
             to create additional masks for.
-            If no list is given, defaults to [0] or
-            [-1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2] if
-            thoroughNorm is True.
+
+        Output
+        ------
+        mask: np.ndarray
+            This mask will be a boolean array that covers the portion
+            of the image that is 'neutral' within the provided bounds.
+
         '''
         img_ref = self.image.astype('uint16')
-        mask_dict = self.maskDict
         sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
                            np.square(img_ref[:, :, 1]) +
                            np.square(img_ref[:, :, 2]))
 
-        # Ensure variables are lists for iteration
-        if type(channels) is int:
-            channels = [channels]
-
-        if type(std_dev) is float:
-            std_dev = [std_dev]
-        elif type(std_dev) is int:
-            std_dev = [std_dev]
-        elif std_dev is None:
-            if self.thoroughNorm is True:
-                std_dev = [-1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2]
-            else:
-                std_dev = [0]
-
-        # Set up masking variables
-        mean_masks = []
-
         # If dividing by 0, it is 0/0
         sum_squares_rgb[sum_squares_rgb == 0] = 1
 
-        for i in channels:
-            # Get working value
-            norm = img_ref[:, :, i] / np.sqrt(sum_squares_rgb)
-            clr = DIC_RGB[i]  # Current color for the dictionary
+        # Get working value
+        norm = img_ref[:, :, channel] / np.sqrt(sum_squares_rgb)
 
-            # Get mask above the mean
-            mean = norm > (norm.mean())
-            mean_masks.append(mean)
+        # Get mask above the mean
+        mask = norm > (norm.mean() + norm.std() * std_dev)
 
-            if self.thoroughNorm is True:
-                # Get Several STD numbers
-                stdm0_25 = norm > (norm.mean() - norm.std() * 0.25)
-                stdm0_5 = norm > (norm.mean() - norm.std() * 0.5)
-                stdm1 = norm > (norm.mean() - norm.std())
-                std0_25 = norm > (norm.mean() + norm.std() * 0.25)
-                std0_5 = norm > (norm.mean() + norm.std() * 0.5)
-                std1 = norm > (norm.mean() + norm.std())
-                std2 = norm > (norm.mean() + norm.std() * 2)
-
-                # Save masks
-                mask_dict[f'Norm >Mean - 1 STD {clr}'] = stdm1
-                mask_dict[f'Norm >Mean - 0.5 STD {clr}'] = stdm0_5
-                mask_dict[f'Norm >Mean - 0.25 STD {clr}'] = stdm0_25
-                mask_dict[f'Norm >Mean {clr}'] = mean
-                mask_dict[f'Norm <Mean {clr}'] = ~mean
-                mask_dict[f'Norm >Mean + 0.25 STD {clr}'] = std0_25
-                mask_dict[f'Norm >Mean + 0.5 STD {clr}'] = std0_5
-                mask_dict[f'Norm >Mean + 1 STD {clr}'] = std1
-                mask_dict[f'Norm >Mean + 2 STD {clr}'] = std2
-            else:
-                mask_dict[f'Norm >Mean {clr}'] = mean
-                mask_dict[f'Norm <Mean {clr}'] = ~mean
-
-        return mean_masks
+        return mask
 
     def neutralMask(self, Num=None, Den=None, uBnd=255.0, lBnd=0.0):
         '''
@@ -362,18 +315,18 @@ class AuroraImage(object):
         # Create mask
         return (loCon <= Num) & (Num <= upCon)
 
-    def domPercentMask(self, Channel=1, dom=1.05):
+    def domPercentMask(self, channel=1, dom=1.05):
         '''
         Creates a mask where the given rgb channel excedes
         other channel values by a given ratio.
 
         Parameters
         ----------
-        Channel: int, defaults to 1 (green)
+        channel: int, defaults to 1 (green)
             The integer value for RGB channels.
             R=0, G=1, B=2
         dom: float, defaults to 1.05
-            The ratio that Channel over the remaining
+            The ratio that channel over the remaining
             channels must excede for the mask.
 
         Output
@@ -399,22 +352,22 @@ class AuroraImage(object):
         rgb = [0, 1, 2]
 
         # Handle potential Key/Type Errors
-        if type(Channel) is str:
+        if type(channel) is str:
             try:
-                Channel = DIC_RGB2CHANNEL[Channel.upper()]
+                channel = DIC_RGB2CHANNEL[channel.upper()]
             except KeyError:
-                log.error(f'KeyError, {Channel} not in {DIC_RGB2CHANNEL} '
+                log.error(f'KeyError, {channel} not in {DIC_RGB2CHANNEL} '
                           'defaulting to green')
-                Channel = 1
-        elif type(Channel) is not int:
-            log.error(f'TypeError, {Channel} not in {DIC_RGB2CHANNEL} '
-                        'defaulting to green')
-            Channel = 1
+                channel = 1
+        elif type(channel) is not int:
+            log.error(f'TypeError, {channel} not in {DIC_RGB2CHANNEL} '
+                      'defaulting to green')
+            channel = 1
 
-        rgb.remove(Channel)
+        rgb.remove(channel)
 
-        return ((image[:, :, Channel] >= image[:, :, rgb[0]] * dom)
-                | (image[:, :, Channel] >= image[:, :, rgb[1]] * dom))
+        return ((image[:, :, channel] >= image[:, :, rgb[0]] * dom)
+                | (image[:, :, channel] >= image[:, :, rgb[1]] * dom))
 
     def threeDimMasked(self, mask):
         '''
@@ -470,7 +423,7 @@ class AuroraImage(object):
         image = self.image
 
         # Find Where green is dominant
-        mask_dom_green = self.domPercentMask(Channel=1, dom=dom_percent)
+        mask_dom_green = self.domPercentMask(channel=1, dom=dom_percent)
         mask_dict['Dominat Percent Green Mask'] = mask_dom_green
 
         # Get Green/Blue Ratio
@@ -519,16 +472,104 @@ class AuroraImage(object):
         mask_dict['Regular Bottom Very Green Mask'] = mask_very_bot_green
         mask_dict['Inverse Bottom Very Green Mask'] = mask_inv_very_bot_green
 
+    def normMask2(self, channels=[0, 1, 2], std_dev=None):
+        '''
+        Returns norm masks for r, g, and b channels.
+        If image is provided, automatically do masked version.
+
+        When img_ref is uint8 the greater than mean isolates
+        aurora better than uint16.
+
+        If the thoroughNorm attribute is True, in addition to
+        the greater than and less than the mean masks, several
+        masks using standard deviation will be made including:
+        > mean - 0.5 * std
+        > mean + 0.5 * std
+        > mean + 2.0 * std
+
+        Parameters
+        ----------
+        channels: list, defaults to [0,1,2]
+            Choose which channels to get masks for.
+            Defaults to all RGB channels
+
+        Output
+        ------
+        mask: np.ndarray
+            This mask will be a boolean array that covers the portion
+            of the image that is 'neutral' within the provided bounds.
+        '''
+        img_ref = self.image.astype('uint16')
+        mask_dict = self.maskDict
+        sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
+                           np.square(img_ref[:, :, 1]) +
+                           np.square(img_ref[:, :, 2]))
+
+        # Ensure variables are lists for iteration
+        if type(channels) is int:
+            channels = [channels]
+
+        if type(std_dev) is float:
+            std_dev = [std_dev]
+        elif type(std_dev) is int:
+            std_dev = [std_dev]
+        elif std_dev is None:
+            if self.thoroughNorm is True:
+                std_dev = [-1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2]
+            else:
+                std_dev = [0]
+
+        # Set up masking variables
+        mean_masks = []
+
+        # If dividing by 0, it is 0/0
+        sum_squares_rgb[sum_squares_rgb == 0] = 1
+
+        for i in channels:
+            # Get working value
+            norm = img_ref[:, :, i] / np.sqrt(sum_squares_rgb)
+            clr = DIC_RGB[i]  # Current color for the dictionary
+
+            # Get mask above the mean
+            mean = norm > (norm.mean())
+            mean_masks.append(mean)
+
+            if self.thoroughNorm is True:
+                # Get Several STD numbers
+                stdm0_25 = norm > (norm.mean() - norm.std() * 0.25)
+                stdm0_5 = norm > (norm.mean() - norm.std() * 0.5)
+                stdm1 = norm > (norm.mean() - norm.std())
+                std0_25 = norm > (norm.mean() + norm.std() * 0.25)
+                std0_5 = norm > (norm.mean() + norm.std() * 0.5)
+                std1 = norm > (norm.mean() + norm.std())
+                std2 = norm > (norm.mean() + norm.std() * 2)
+
+                # Save masks
+                mask_dict[f'Norm >Mean - 1 STD {clr}'] = stdm1
+                mask_dict[f'Norm >Mean - 0.5 STD {clr}'] = stdm0_5
+                mask_dict[f'Norm >Mean - 0.25 STD {clr}'] = stdm0_25
+                mask_dict[f'Norm >Mean {clr}'] = mean
+                mask_dict[f'Norm <Mean {clr}'] = ~mean
+                mask_dict[f'Norm >Mean + 0.25 STD {clr}'] = std0_25
+                mask_dict[f'Norm >Mean + 0.5 STD {clr}'] = std0_5
+                mask_dict[f'Norm >Mean + 1 STD {clr}'] = std1
+                mask_dict[f'Norm >Mean + 2 STD {clr}'] = std2
+            else:
+                mask_dict[f'Norm >Mean {clr}'] = mean
+                mask_dict[f'Norm <Mean {clr}'] = ~mean
+
+        return mean_masks
+
     def maskNormImage(self):
         '''
         Add norm based masks to the dictionary.
-        Uses the normMask method to get several
+        Uses the normMask2 method to get several
         default masking combinations.
         '''
         mask_dict = self.maskDict
 
         # Norm Masks for rgb channels
-        mask_r_rgb, mask_g_rgb, mask_b_rgb = self.normMask()
+        mask_r_rgb, mask_g_rgb, mask_b_rgb = self.normMask2()
 
         # Greater Green Mean Less Red Mean
         gr_not_red = mask_g_rgb & ~mask_r_rgb
@@ -607,7 +648,9 @@ class AuroraImage(object):
         '''
         if masks is None:
             log.error('No masks where given to compare.')
-            masks = self.maskDict.keys()
+            masks = self.compareMasks
+            if (masks == []) | (masks is None):
+                masks = self.maskDict.keys()
 
         cur_img = self.applyMasks(masks)
         pre_img = other.applyMasks(masks)

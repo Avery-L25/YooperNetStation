@@ -30,6 +30,7 @@ import sys
 import toml
 import logging
 import time
+import datetime as dt
 from copy import copy
 from multiprocessing import Process
 import cv2 as cv  # Image management
@@ -42,20 +43,30 @@ import filemanager as fman
 
 # region Initialize Variables
 # Get working directory and repository directory
-wkdir = os.getcwd()
-station_dir = path.dirname(path.realpath(__file__))
+wkdir = path.dirname(path.realpath(__file__))
 
 # Load Config Files
-config_file_path = wkdir + "/.YooperConfig.toml"
-yoop_config = toml.load(config_file_path)
+yoop_config = toml.load(path.join(wkdir, "/.YooperConfig.toml"))
 
 # Get Storage Locations
 yoop_paths = yoop_config['paths']
-img_folder = path.join(wkdir, yoop_paths['Images_Folder'])
+general_img_folder = path.join(wkdir, yoop_paths['Images_Folder'])
 hdf_folder = path.join(wkdir, yoop_paths['HDF5_Folder'])
 log_folder = path.join(wkdir, yoop_paths['Log_Folder'])
 # ? If using hdf5 or uploading using python instead of RCLONE
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']
+img_folder = general_img_folder
+sensor_file = 'test.hdf5'
+
+# Get Storage Formats
+yoop_form = yoop_config['formats']
+image_folder_format = path.join(general_img_folder,
+                                yoop_form['Image_Folder_Format'])
+image_file_format = (yoop_form['Image_Name_Format'] +
+                     yoop_form['Image_Extension'])
+camera_file_format = path.join(hdf_folder, yoop_form['Camera_Info_Format'])
+sensor_file_format = path.join(hdf_folder, yoop_form['Sensor_Data_Format'])
+log_file_format = path.join(log_folder, yoop_form['Log_File_Format'])
 
 # Initialize System Variables
 yoop_aurora = yoop_config['aurora']
@@ -66,6 +77,7 @@ AFTER_FLAG_TIME = yoop_aurora['Detection_After_Time']
 exposure_time = 30
 image_rate = HIGH_IMG_RATE
 sensor_feed_rate = yoop_config['sensors']['Data_Rate']
+
 
 # initializes scheduling # ! Implement for Uploading
 # import schedule
@@ -138,7 +150,7 @@ def startCam():
                 sys.exit()
 
     # ! Temporary fixes!!!
-    YCamera.img_folder = img_folder_path
+    YCamera.img_folder = img_folder
 
     # Return working camera
     return YCamera
@@ -199,7 +211,8 @@ def getSensorData():
         mag, pres, temp, gps = _readSensors()
         sens_time = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
         sensor_dict = {'Time': sens_time, 'Mag': mag, 'Pressure': pres,
-                       'Temperature': temp, 'GPS': gps}
+                       'Temperature': temp}
+        # add {'GPS': gps} after code functions
 
         # Write dictionary to file
         fman.hdf(sensor_file, sensor_dict)
@@ -229,7 +242,7 @@ def _readSensors():
     return mag, pres, temp, gps
 
 
-def uploadData(folder='', path=path.join(station_dir, 'Data'), move=True,
+def uploadData(folder='', path=path.join(wkdir, 'Data'), move=True,
                doUpload=True, flag=''):
     '''
     Upload from the station to a setup remote drive using rclone.
@@ -263,7 +276,7 @@ def uploadData(folder='', path=path.join(station_dir, 'Data'), move=True,
     '''
 
     # Get storage information
-    station_Gb, total_used, station_used = fman.dataSize(station_dir)
+    station_Gb, total_used, station_used = fman.dataSize(wkdir)
 
     if doUpload is True:
         fman.rclone(move=move, path=path, folder=folder)
@@ -292,6 +305,24 @@ def updateCaptureRate(aurora_mse):
         image_rate = LOW_IMG_RATE
 
     pass
+
+
+def getStorageLocations():
+    '''
+    Set the storage locations for images, hdf5 files, and log file.
+    '''
+    global sensor_file, img_folder, camera_file, log_file
+
+    def makePath(format):
+        path2make = dt.datetime.now(dt.UTC).strftime(format)
+        if os.path.exists(path2make) is False:
+            os.makedirs(path2make)
+        return path.realpath(path2make)
+
+    img_folder = makePath(image_folder_format)
+    camera_file = makePath(camera_file_format)
+    sensor_file = makePath(sensor_file_format)
+    log_file = makePath(log_file_format)
 
 
 def startStation():

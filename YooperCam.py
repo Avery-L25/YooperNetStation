@@ -90,7 +90,9 @@ class YooperCam(ZWOCamera):
 
         # Initialize ROI attributes to object
         self.start_x, self.start_y = pza.getStartPos(self._cameraID)
-        self.width, self.height, self.binning, self.imageType = self._roi[2:]
+        (self.width, self.height, self.binning, self.imageType
+         ) = pza.getROIFormat(self._cameraID)
+        # self._roi[2:]
 
         # Saving Informartion
         self._imgName = ''  # To track current name for logging purposes
@@ -551,14 +553,18 @@ class YooperCam(ZWOCamera):
         # if binning < 1 or binning > max(self._supportedBins):
         #     raise ValueError("Binning must fit in camera range: " +
         #                      f"1 - {max(self._supportedBins)}")
+
         if width % 8 != 0:
             raise ValueError("Width must be a multiple of 8")
+
         if height % 2 != 0:
             raise ValueError("Height must be a multiple of 2")
+
         if height_check is not True:
             raise ValueError("The binned sensor combined sensor height must "
                              "respect the following rule:\n"
                              "maxHeight/binning >= start_y + height")
+
         if width_check is not True:
             raise ValueError("The binned sensor combined sensor width must "
                              "respect the following rule:\n"

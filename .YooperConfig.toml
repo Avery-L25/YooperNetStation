@@ -41,10 +41,11 @@ RClone_Remote="remote:"
 
 [formats]
 Data_Folder         ="%Y-%m-%d_Data"
-Image_Name_Format   ="%Y-%m-%d_%H-%M-%S_exp"
 Image_Folder_Format ="%Y-%m-%d_Images"
-Camera_Info_Format  ="%Y-%m-%d_Cam_Info"
-Sensor_Data_Format  ="%Y-%m-%d_Sensor_Data"
+Image_Name_Format   ="%Y-%m-%d_%H-%M-%S"
+Camera_Info_Format  ="%Y-%m-%d_Cam_Info.hdf5"
+Sensor_Data_Format  ="%Y-%m-%d_Sensor.hdf5"
+Log_File_Format     ="YooperLog_%Y-%m-%d.log"
 Image_Extension     =".png"
 
 [passkeys]
