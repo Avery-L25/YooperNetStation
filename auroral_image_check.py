@@ -182,49 +182,49 @@ class AuroraImage(object):
         inverse: bool, defaults to False
             If True, get the inverse of the mask.
         '''
-        mask = mask_func(**kwargs)
+        # mask = mask_func(**kwargs)
 
         pass
 
     def normMask(self, channel=slice(0, 3), std_dev=0.0):
-         '''
-         Returns norm mask for r, g, and b channels.
-         If image is provided, automatically do masked version.
+        '''
+        Returns norm mask for r, g, and b channels.
+        If image is provided, automatically do masked version.
 
-         When img_ref is uint8 the greater than mean isolates
-         aurora better than uint16.
+        When img_ref is uint8 the greater than mean isolates
+        aurora better than uint16.
 
-         Parameters
-         ----------
-         channels: int | slice, defaults to slice(0, 3)
-             Choose which channels to get mask for.
-             Defaults to all RGB channels.
-         std_dev: float, defaults to 0.0
-             The multiple of the standard deviation
-             to add while masking.
+        Parameters
+        ----------
+        channels: int | slice, defaults to slice(0, 3)
+            Choose which channels to get mask for.
+            Defaults to all RGB channels.
+        std_dev: float, defaults to 0.0
+            The multiple of the standard deviation
+            to add while masking.
 
-         Output
-         ------
-         mask: np.ndarray
-             This mask will be a boolean array that covers the portion
-             of the image that is 'neutral' within the provided bounds.
+        Output
+        ------
+        mask: np.ndarray
+            This mask will be a boolean array that covers the portion
+            of the image that is 'neutral' within the provided bounds.
 
-         '''
-         img_ref = self.image.astype('uint16')
-         sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
-                            np.square(img_ref[:, :, 1]) +
-                            np.square(img_ref[:, :, 2]))
+        '''
+        img_ref = self.image.astype('uint16')
+        sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
+                           np.square(img_ref[:, :, 1]) +
+                           np.square(img_ref[:, :, 2]))
 
-         # If dividing by 0, it is 0/0
-         sum_squares_rgb[sum_squares_rgb == 0] = 1
+        # If dividing by 0, it is 0/0
+        sum_squares_rgb[sum_squares_rgb == 0] = 1
 
-         # Get working value
-         norm = img_ref[:, :, channel] / np.sqrt(sum_squares_rgb)
+        # Get working value
+        norm = img_ref[:, :, channel] / np.sqrt(sum_squares_rgb)
 
-         # Get mask above the mean
-         mask = norm > (norm.mean() + norm.std() * std_dev)
+        # Get mask above the mean
+        mask = norm > (norm.mean() + norm.std() * std_dev)
 
-         return mask
+        return mask
 
     def statMask(self, channel=slice(0, 3), std_dev=0.0, image_stats=True):
         '''
@@ -278,7 +278,6 @@ class AuroraImage(object):
             mask = chan >= (chan_mean + chan_std * std_dev)
 
         return mask
-
 
     def neutralMask(self, Num=None, Den=None, uBnd=255.0, lBnd=0.0):
         '''
@@ -1006,6 +1005,7 @@ def makeBasicImages(aura=''):
     else:
         log.warning('Need AuroraImage object to run')
         return None
+
 
 # if run with a file given to read, a masked grid is created
 if infile is not None:

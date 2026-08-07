@@ -141,7 +141,7 @@ def startCam():
             elif error_code == 16:
                 # General error, liekly not problematic here
                 log.warning(f"{zwo_error}")
-                log.warning(f"Assuming camera is operational.")
+                log.warning("Assuming camera is operational.")
                 cam_working = True
 
             elif error_code == 11:
@@ -179,7 +179,7 @@ def captureImage(expSec=30):
     Writes
     '''
     log.debug("Start Image capturing")
-    global current_image, previous_image, aurora_mse
+    global current_image, previous_image
 
     # Start camera info dictionary
     camera_dict = {}
@@ -219,11 +219,11 @@ def captureImage(expSec=30):
     camera_dict['mse'] = -1.0  # Default to negative if not read
     try:
         # Compare Images
-        aurora_mse = current_image - previous_image
+        mse, aura_flag = updateCaptureRate(current_image, previous_image)
 
         # Check threshold and update dictionary
-        camera_dict['flag'] = updateCaptureRate(aurora_mse)
-        camera_dict['mse'] = aurora_mse
+        camera_dict['flag'] = aura_flag
+        camera_dict['mse'] = mse
     except NameError as ne_args:
         # If there is no previous image to compare
         log.debug(ne_args)
