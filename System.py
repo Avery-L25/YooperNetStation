@@ -106,19 +106,28 @@ def startCam():
     '''
     Handle opening the camera, returning the YooperCam object.
     Designed to handle common errors such as a closed camera.
+    Ensure a ZWO ASI Camera is plugged in. Will use the camera
+    with ID = 0.
+
+    Output
+    ------
+    YCamera: YooperCam
+        YooperCam class to interface with a ZWO Camera.
     '''
 
     # initialize camera
     YCamera = YooperCam(0)
+
+    # Assume camera is not working
     cam_working = False
 
+    # Test camera until it works.
     while cam_working is False:
         try:
-            # take a test photo to ensure camera opened properly
+            # Take a test photo
             take_photo = YCamera.shot(exposure=1, return_img=True)
             if take_photo is not None:
-                # This should not happen
-                # ! Log error/critical or other
+                # If there is an image camera is operational
                 cam_working = True
 
         except pza.ASIError as zwo_error:
@@ -131,44 +140,51 @@ def startCam():
 
             elif error_code == 16:
                 # General error, liekly not problematic here
-                # ! log with warning
+                log.warning(f"{zwo_error}")
+                log.warning(f"Assuming camera is operational.")
                 cam_working = True
 
             elif error_code == 11:
                 # Error grabbing exposure
-                # Usually occurs if the image was too dark
-                # To be expected with the short exposure
-                # ! warning/error
-                print(error_code)
+                log.warning(f"{error_code}: Error grabbing exposure,"
+                            "image likely too dark.")
                 cam_working = True
 
             else:
                 # Other errors needing additional diagnosis
-                # ! error/critical
-                print(zwo_error)
-                print("="*35 + "\n")
+                log.critical(f"{zwo_error}")
                 sys.exit()
 
-    # ! Temporary fixes!!!
+    # Ensure the same image folder in the camera
     YCamera.img_folder = img_folder
 
-    # Return working camera
+    # Return working camera object
     return YCamera
 
 
 def captureImage(expSec=30):
     '''
     Capture an all sky image, write to storage location,
-    write data about camera, and runs a check for aurora.
+    write data about camera, and runs a check for aurora,
+    adjusting settings accordingly.
 
     Parameters
     ----------
     expSec: int
-        The camera exposure time in seconds. This is for adjustment within
-        this script
+        The camera exposure time in seconds.
+
+    Output
+    ------
+    Saves image to the daily image folder.
+    Writes
     '''
     log.debug("Start Image capturing")
-    global current_image, previous_image, aurora_flag
+    global current_image, previous_image, aurora_mse
+
+    # Start camera info dictionary
+    camera_dict = {}
+    camera_dict['exposure'] = expSec
+    camera_dict['gain'] = ycam.gain
 
     # Get previous image for comparison
     try:
@@ -186,21 +202,65 @@ def captureImage(expSec=30):
 
         return None
 
+    # Make Aurora Image for masking
     current_image = AuroraImage(sky_img)
-    cv.imwrite(path.join(img_folder,
-                         dt.datetime.now(dt.UTC).strftime(image_file_format)),
-               sky_img)
+
+    # Get image name
+    cap_time = dt.datetime.now(dt.UTC)
+    cur_img_name = path.join(img_folder, cap_time.strftime(image_file_format))
+
+    # Write image and add name to dictionary
+    cv.imwrite(cur_img_name, sky_img)
+    camera_dict['image name'] = cur_img_name
+    camera_dict['capture time'] = cap_time
 
     # Run aurora check/screen
+    camera_dict['flag'] = False  # Default to false
+    camera_dict['mse'] = -1.0  # Default to negative if not read
     try:
-        aurora_flag = current_image - previous_image
-        updateCaptureRate(aurora_flag)
+        # Compare Images
+        aurora_mse = current_image - previous_image
+
+        # Check threshold and update dictionary
+        camera_dict['flag'] = updateCaptureRate(aurora_mse)
+        camera_dict['mse'] = aurora_mse
     except NameError as ne_args:
+        # If there is no previous image to compare
         log.debug(ne_args)
     except KeyError as ke:
-        log.error(f'Key for image comparison mask \'{ke}\' not found.')
+        # If the comparison was setup wrong
+        log.critical(f'Key for image comparison mask \'{ke}\' not found.')
 
     log.debug('Capturing Finished')
+
+
+def updateCaptureRate(aurora_mse):
+    '''
+    Update the frequency of photos capture by the station.
+    Uses the threshold value set in \'.YooperConfig.toml.\'
+    '''
+    global image_rate
+
+    # img.normMask
+    # 1:
+    # img_mean = image[image >= self.minRGBValue].mean()
+    # img_stdv = image[image >= self.minRGBValue].std()
+    # *Blue>mean = image[:, :, 2] >= img_mean
+    # *Blue>mean = image[:, :, 2] >= img_mean + 2 * img_stdv
+    # 2: is 1 and ...
+    #  totale neutral green bottom =
+    # *neurtal r/g = neutralMask(num=0, den=1)
+    # *neutral b/g = neutralMask(num=2, den=1)
+    #  3:
+    # *>mean G =  normMask(channel=1)
+    # *<mean B = ~normMask(channel=2)
+
+    if aurora_mse > AURORA_THRESHOLD:
+        image_rate = HIGH_IMG_RATE
+        return True
+    else:
+        image_rate = LOW_IMG_RATE
+        return False
 
 
 def getSensorData():
@@ -213,18 +273,20 @@ def getSensorData():
           GPS data collection
     '''
     while True:
-        # Read data into dictionary
+        # Read data
         mag, pres, temp, gps = _readSensors()
 
         # HDF5 needs time as string
         sens_time = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+
+        # Write data to dictionary
         sensor_dict = {'Time': sens_time, 'Mag': mag, 'Pressure': pres,
                        'Temperature': temp}
         # add {'GPS': gps} after code functions
 
         log.debug(f"Sensor data written at {sens_time}")
 
-        # Write dictionary to file
+        # Write dictionary to hdf5 file
         fman.hdf(sensor_file, sensor_dict)
 
         # Collect data at configured rate
@@ -288,32 +350,19 @@ def uploadData(folder='', path=path.join(wkdir, 'Data'), move=True,
     station_Gb, total_used, station_used = fman.dataSize(wkdir)
 
     if doUpload is True:
+        # When called to check for the upload.
         fman.rclone(move=move, path=path, folder=folder)
 
-    # Check if a flag is met # todo Figure out if this is necessary
+    # todo Figure out if this is necessary
+    # todo Like make a 'check' function
+    # Check if a flag is met
     if doUpload is False:
         # ! log that a flag was checked
         if flag == '':
-            print(f"GB used: {station_Gb}\nStorage used: {station_used}%\n"
-                  f"Total storage used: {total_used}%")
+            log.info(f"GB used: {station_Gb}\nStorage used: {station_used}%\n"
+                     f"Total storage used: {total_used}%")
         elif flag.lower() in ['gb', 'station gb', 'data size', 'size']:
             pass
-
-    # todo Function
-
-
-def updateCaptureRate(aurora_mse):
-    '''
-    Update the frequency of photos capture by the station.
-    '''
-    global image_rate
-
-    if aurora_mse > AURORA_THRESHOLD:
-        image_rate = HIGH_IMG_RATE
-    else:
-        image_rate = LOW_IMG_RATE
-
-    pass
 
 
 def getStorageLocations():
@@ -332,8 +381,10 @@ def getStorageLocations():
                 # if directory passed, make full directory
                 os.makedirs(fpath)
             else:
-                # if a file is passed, make path to file
-                os.makedirs(fpath.rpartition('/')[0])
+                just_path = fpath.rpartition('/')[0]
+                if os.path.exists(just_path) is False:
+                    # if a file is passed, make path to file
+                    os.makedirs(just_path)
 
         # return formatted path
         return path.realpath(fpath)
@@ -365,7 +416,6 @@ def startStation():
     # todo determine and implement a stop condition
     try:
         while True:
-            # ! This should encapsulate taking the photo, logging, and analysis
             before = time.time()
             captureImage(expSec=1)
             after = time.time()
@@ -376,23 +426,21 @@ def startStation():
                 time.sleep(sleep_for)
     except KeyboardInterrupt:
         # Stop the sensors if manually killed
-        sensors_proc.kill()
-        print("Closing program")
+        sensors_proc.kill()  # todo Change with stop condition
+        log.warning("Stopping sensors.")
 
     # wait for the sensors to finish their loop before finishing
     sensors_proc.join()
-    # todo Log start time
 
     # Once processes end
-    print("System operatation stopped.\nWaiting...")
+    log.warning("System operatation stopped. Waiting...")
 
 
-# ## Start Camera, Sensors functions
+# Start station when run
 if __name__ == '__main__':
 
-    print("Starting YooperNet Station")
-    print("==========================")
-    print("\n"*3)
+    log.info("Starting YooperNet Station")
+    log.info("==========================")
 
     # start the station for operation
     getStorageLocations()

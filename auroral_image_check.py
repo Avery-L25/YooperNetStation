@@ -847,7 +847,51 @@ class AuroraImage(object):
     # endregion
 
     def filterImage(self, channels, min=None, image=None):
-        '''Filter low light image conditions'''
+        '''
+        Filter low light image conditions for consistent channel averages.
+        Helpful in isolating image contents when using a fisheye lens.
+
+        Parameters
+        ----------
+        channels: int | slice
+            Which pixel channels to filter. This will accept RGB
+            channels individually, as a splice, or a list.
+            If a splice is provided, channels will be filtered
+            individually. See examples for more details.
+        min: int, defaults to AuroraImage.minRGBValue
+            The pixel channel minimum that will be set to 0.
+        image: np.ndarray, defaults to AuroraImage.image
+            The image to filter. Will make copy default image if
+            no image is provided.
+
+        Output
+        ------
+        filtered_image: np.ndarray
+            Image with no channel values below the minimum.
+
+        Examples
+        --------
+        >>> red   = np.array([[[ 0, 0, 0],[ 0, 0, 0]],
+        >>> green = np.array( [[13,12, 9],[ 8, 2, 1]],
+        >>> blue  = np.array( [[10,10,10],[10,10,10]]])
+        >>> image = np.array([[[ 0, 0, 0],[ 0, 0, 0]],
+                              [[13,12, 9],[ 8, 2, 1]],
+                              [[10,10,10],[10,10,10]]])
+        >>> filtered = filteredImage(splice(0:3), min=10, image=image)
+        filtered = np.array([[[ 0, 0, 0],[ 0, 0, 0]],
+                             [[13,12, 0],[ 0, 0, 0]],
+                             [[10,10,10],[10,10,10]]])
+        NOTE that only the values below the set minimum (min=10) were
+        filtered out.
+        >>> filtered = filteredImage([0, 1, 2], min=10, image=image)
+        filtered = np.array([[[ 0, 0, 0],[ 0, 0, 0]],
+                             [[ 0, 0, 0],[ 0, 0, 0]],
+                             [[10,10,10],[10,10,10]]])
+        NOTE that using a list filters out the entire pixel while
+        a slice only looks at individual channels.
+        Looking at only 1 channel would have the same effect, this
+        allows values below the minimum to be found in other channels.
+        '''
         if image is None:
             # If no image provided, filter the reference image
             filtered_image = np.copy(self.image)
@@ -856,22 +900,24 @@ class AuroraImage(object):
             filtered_image = np.copy(image)
 
         if min is None:
+            # Get default minimum filtering value
             min = self.minRGBValue
 
         if type(channels) is slice:
+            # Filter all seperately
             filtered_image *= [filtered_image[:, :, channels] >= min][0]
         elif type(channels) is int:
+            # Filter a single channel
             filtered_image *= [filtered_image[:, :, channels] >= min][0]
         else:
             for c in channels:
+                # Filters for each channel given
                 filtered_image *= [filtered_image[:, :, c] >= min][0]
 
-        if image is None:
-            return filtered_image
-        else:
-            return filtered_image
+        return filtered_image
 
     def showImage(self):
+        'Show the working image using matplotlib'
         plt.imshow(self.image)
 
 
@@ -904,7 +950,7 @@ def makeBasicImages(aura=''):
         aura.stackImages()
         aura.maskDict.clear()
     else:
-        print('Need AuroraImage object to run')
+        log.warning('Need AuroraImage object to run')
         return None
 
 # if run with a file given to read, a masked grid is created

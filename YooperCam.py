@@ -188,7 +188,7 @@ class YooperCam(ZWOCamera):
         self._imgName = imgName
 
         # Capture Image (exp is in microsecs, image type 1 is rgb24)
-        print("Capturing Image")
+        log.debug("Capturing Image")
         zwo_img = super().shot(exposureTime_us=int(expSec * 10**6),
                                imageType=1)
 
@@ -196,7 +196,7 @@ class YooperCam(ZWOCamera):
         if save is True:
             # write image to image folder
             cv.imwrite(path, zwo_img)
-            print(f"image saved as {imgName} to {main_folder}")
+            log.debug(f"image saved as {imgName} to {main_folder}")
 
         # Display Image
         if display is True:
@@ -240,7 +240,7 @@ class YooperCam(ZWOCamera):
         try:
             while True:
                 # Capture image
-                print("Capturing Image")
+                log.debug("Capturing Image")
                 x = self.shot(exposure=exposure, return_img=True)
 
                 # Save Image and move to folder
@@ -249,7 +249,7 @@ class YooperCam(ZWOCamera):
                                                   f"{exposure}_live.png"))
                 img_success = cv.imwrite(imageName, x)
                 if img_success:
-                    print(f"image saved as {imageName}")
+                    log.debug(f"image saved as {imageName}")
                 shutil.move(imageName, str(self.img_folder))
 
                 sleep(0.25)
@@ -668,12 +668,12 @@ class YooperCam(ZWOCamera):
             # If control is an integer [ID#] get the controllable name
             con_name = key_dict[con]
         else:
-            print("Check that value \"con\" is a controllable value")
+            log.debug("Check that value \"con\" is a controllable value")
             exit()
 
         if val is None:
             # If the method is called without a value, print to terminal
-            print(f"{con_name} is {pza.getControlValue(0, con)}"
+            log.info(f"{con_name} is {pza.getControlValue(0, con)}"
                   f" [(Value, Auto)]\nValue was not changed.")
         else:
             # Set controllable value to camera
@@ -771,10 +771,10 @@ class YooperCam(ZWOCamera):
                                       self.bytesPerPixel)
 
                 except pza.ASIError as e:
-                    print(f"Error getting video data: {e}")
+                    log.warning(f"Error getting video data: {e}")
                     img = np.zeros((self.width, self.width, 3))
                     error_counter = error_counter+1
-                    print(error_counter)
+                    log.info(error_counter)
                     continue
 
                 # run aurora detection and display

@@ -85,7 +85,7 @@ def rclone(move=True, path='', folder=''):
     elif move is False:
         uploadMethod = 'copy'
     else:
-        print("CRITICAL ERROR: UNKNOWN UPLOADING OPERATION")
+        log.critical("CRITICAL ERROR: UNKNOWN UPLOADING OPERATION")
         uploadMethod = 'copy'  # Copy incase
         # ! Upload a flag or file to alert handler?
 
@@ -147,8 +147,7 @@ def deleteFiles(path):
         elif type(files) is list:
             for file in files:
                 if file.rpartition('.')[2] in file_ext_del:
-                    # log error(f"deleting {file}")
-                    print(join(root, file))
+                    log.error(f"deleting {join(root, file)}")
                     # os.remove(join(root,file))
 
         # Delete the directory if emptied
@@ -161,15 +160,14 @@ def deleteFiles(path):
                     continue
                 d_len = len(os.listdir(join(root, d)))
                 if d_len == 0:
-                    # logerror(f"deleting empty dir {d}")
-                    print(join(root, d))
+                    log.error(f"deleting empty dir {join(root, d)}")
                     # os.rmdir(join(root,d))
                 else:
-                    # log log(f"{d_len} files in {d}")
+                    log.info(f"{d_len} files in {d}")
                     pass
-        print(f"roots are {root}")
-        print(f"Directories ares{dirs}")
-        print(f"Files are {files}\n\n")
+        log.info(f"roots are {root}")
+        log.info(f"Directories ares{dirs}")
+        log.info(f"Files are {files}\n\n")
     # os.remove to delete a file
     # os.rmdir to delete an empty directory
 
@@ -198,10 +196,10 @@ def dataSize(path):
                 fs = path.getsize(join(root, file))
                 file_size = file_size + fs
 
-        print(f"Total file size is now {file_size}")
-        print(f"roots are {root}")
-        print(f"Directories ares{dirs}")
-        print(f"Files are {files}\n\n")
+        log.info(f"Total file size is now {file_size}")
+        log.info(f"roots are {root}")
+        log.info(f"Directories ares{dirs}")
+        log.info(f"Files are {files}\n\n")
 
     def b2gb(val):
         'Turn bytes value into gigabytes'
@@ -302,7 +300,7 @@ def getSun(lati=42.279594, long=-83.732124):
 
         if cur < x:
             future_events.append(x)
-            # print(f"Event time: {x.strftime("%h %d %H:%M")}")
+            log.info(f"Event time: {x.strftime("%h %d %H:%M")}")
 
         else:
             pass
@@ -310,8 +308,8 @@ def getSun(lati=42.279594, long=-83.732124):
     next_event = min(future_events)
     idx_min = sun_events.index(next_event)
     sun_does_whaaat = sr_or_ss[idx_min]
-    print("Next Sun Event: ", next_event.strftime("%h %d %H:%M"), " at ",
-          sun_does_whaaat, ".\n")
+    log.info("Next Sun Event: ", next_event.strftime("%h %d %H:%M"), " at ",
+             sun_does_whaaat, ".\n")
 
     return next_event, sun_does_whaaat
 
@@ -338,7 +336,7 @@ def updateJobs():  # Turn off the cam
     else:
         # String for next job update
         upJob_time = next_job_update.strftime('%H:%M')
-        print(f"Next Job scheduled for {upJob_time} \n"
+        log.info(f"Next Job scheduled for {upJob_time} \n"
               f"(From: {next_job_update})")
 
         # Update Camera Status at next sunsrise/sunset
@@ -349,7 +347,7 @@ def updateJobs():  # Turn off the cam
     # elif (curtime > today_ss and curtime < tmrw_sr) or curtime < today_sr:
     #     schedule.every(10).seconds.do(data_processing).tag('camera')
     # else:
-    #     print("_"*62 + "\n"
+    #     log.info("_"*62 + "\n"
     #           f"UNKNOWN ERROR WITH SCHEDULING HAS OCCURRED\n"
     #           f"Current time: {curtime} \n"
     #           f"Todays sunrise: {today_sr} \n Todays"
@@ -359,36 +357,54 @@ def updateJobs():  # Turn off the cam
     if set_or_rise == "Sunrise":
         cameraoff = False
         camera_period = 300
-        print('CAMERA ON\n')
+        log.info('CAMERA ON\n')
     elif set_or_rise == "Sunset":
         cameraoff = True
-        print('CAMERA OFF\n')
+        log.info('CAMERA OFF\n')
     else:
-        print("Error with collecting next sun event type")
+        log.error("Error with collecting next sun event type")
 
 
 # Create/Write to hdf file
-def hdf(file, dicty):
+def hdf(file, data_dict):
     '''
-    Creates an empty hdf5 files
+    Creates an empty hdf5 file. Create directories if necessary.
 
     Cannot handle datetime datatype, must be a string.
+
+    Parameters
+    ----------
+    file: str
+        File and path to file.
+    data_dict: dict
+        Dictionary with data to write to hdf5 file.
+        Key is used as the dataset name and the value
+        is the written data.
     '''
     if path.exists(file) & path.isfile(file):
+        # If the file exist append information
         with h5py.File(file, "a") as f:
-            for k, v in dicty.items():
+            for k, v in data_dict.items():
                 k = str(k)
+
+                # resize dataset and add new value
                 f[k].resize((f[k].shape[0] + 1), axis=0)  # type: ignore
                 f[k][-1] = v  # type: ignore
     elif file.rpartition('.')[-1] == 'hdf5':
-        os.makedirs(file.rpartition('/')[0])
+        # If a file is passed and does not exist, check that directory exists
+        hdf_direc = file.rpartition('/')[0]
+        if path.exists(hdf_direc) is False:
+            # Make directory to the file location
+            os.makedirs(hdf_direc)
+
+        # Start new hdf5 file
         with h5py.File(file, "w") as f:
-            for k, v in dicty.items():
+            for k, v in data_dict.items():
+                # Create a dataset and store data
                 f.create_dataset(str(k), maxshape=((None,)+np.shape(v)),
                                  data=[v], chunks=True)
     else:
         log.warning(f'File is not hdf5: {file}')
-    pass
 
 
 # Run commands from strings
