@@ -234,33 +234,56 @@ def captureImage(expSec=30):
     log.debug('Capturing Finished')
 
 
-def updateCaptureRate(aurora_mse):
+def updateCaptureRate(new_img, old_img):
     '''
     Update the frequency of photos capture by the station.
     Uses the threshold value set in \'.YooperConfig.toml.\'
     '''
     global image_rate
 
-    # img.normMask
-    # 1:
-    # img_mean = image[image >= self.minRGBValue].mean()
-    # img_stdv = image[image >= self.minRGBValue].std()
-    # *Blue>mean = image[:, :, 2] >= img_mean
-    # *Blue>mean = image[:, :, 2] >= img_mean + 2 * img_stdv
-    # 2: is 1 and ...
-    #  totale neutral green bottom =
-    # *neurtal r/g = neutralMask(num=0, den=1)
-    # *neutral b/g = neutralMask(num=2, den=1)
-    #  3:
-    # *>mean G =  normMask(channel=1)
-    # *<mean B = ~normMask(channel=2)
+    def auroraMasks(aura_img):
+        '''
+        Create masks for the aurora images used in comparison
+        '''
+        # Get statMasks
+        blue_g_img_mean = aura_img.statMask(channel=2, std_dev=0,
+                                            image_stats=True)
+        blue_g_img_2std = aura_img.statMask(channel=2, std_dev=2,
+                                            image_stats=True)
+        # Mask 1: B>mean & ~B>mean+2std
+        mask1 = blue_g_img_mean & ~blue_g_img_2std
 
+        # Get neutralMasks
+        neurtal_r_g = aura_img.neutralMask(num=0, den=1)
+        neutral_b_g = aura_img.neutralMask(num=2, den=1)
+        # Mask 2: Mask1 and Neutral Green bottom
+        mask2 = mask1 & neutral_b_g & neurtal_r_g
+
+        # Get normMaks
+        norm_mean_green = aura_img.normMask(channel=1)
+        norm_mean_blue = aura_img.normMask(channel=2)
+        # Mask 3: Norm G>mean and Norm B<mean
+        mask3 = norm_mean_green & ~norm_mean_blue
+
+        aura_img.maskDict['General Masking'] = mask1
+
+    # Mask images
+    auroraMasks(new_img)
+    auroraMasks(old_img)
+
+    # Compare Images
+    aurora_mse = new_img - old_img
+
+    # Check MSE against threshold and determine capture rate
     if aurora_mse > AURORA_THRESHOLD:
         image_rate = HIGH_IMG_RATE
-        return True
+        flag = True
     else:
         image_rate = LOW_IMG_RATE
-        return False
+        flag = False
+
+    # Return MSE and flag
+    return aurora_mse, flag
 
 
 def getSensorData():
