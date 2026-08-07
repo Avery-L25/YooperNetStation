@@ -187,12 +187,49 @@ class AuroraImage(object):
         pass
 
     def normMask(self, channel=slice(0, 3), std_dev=0.0):
-        '''
-        Returns norm masks for r, g, and b channels.
-        If image is provided, automatically do masked version.
+         '''
+         Returns norm mask for r, g, and b channels.
+         If image is provided, automatically do masked version.
 
-        When img_ref is uint8 the greater than mean isolates
-        aurora better than uint16.
+         When img_ref is uint8 the greater than mean isolates
+         aurora better than uint16.
+
+         Parameters
+         ----------
+         channels: int | slice, defaults to slice(0, 3)
+             Choose which channels to get mask for.
+             Defaults to all RGB channels.
+         std_dev: float, defaults to 0.0
+             The multiple of the standard deviation
+             to add while masking.
+
+         Output
+         ------
+         mask: np.ndarray
+             This mask will be a boolean array that covers the portion
+             of the image that is 'neutral' within the provided bounds.
+
+         '''
+         img_ref = self.image.astype('uint16')
+         sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
+                            np.square(img_ref[:, :, 1]) +
+                            np.square(img_ref[:, :, 2]))
+
+         # If dividing by 0, it is 0/0
+         sum_squares_rgb[sum_squares_rgb == 0] = 1
+
+         # Get working value
+         norm = img_ref[:, :, channel] / np.sqrt(sum_squares_rgb)
+
+         # Get mask above the mean
+         mask = norm > (norm.mean() + norm.std() * std_dev)
+
+         return mask
+
+    def statMask(self, channel=slice(0, 3), std_dev=0.0, image_stats=True):
+        '''
+        Returns stat-based mask for r, g, and b channels.
+        If image is provided, automatically do masked version.
 
         Parameters
         ----------
@@ -201,7 +238,7 @@ class AuroraImage(object):
             Defaults to all RGB channels.
         std_dev: float, defaults to 0.0
             The multiple of the standard deviation
-            to create additional masks for.
+                        to add while masking.
 
         Output
         ------
@@ -210,21 +247,38 @@ class AuroraImage(object):
             of the image that is 'neutral' within the provided bounds.
 
         '''
-        img_ref = self.image.astype('uint16')
-        sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
-                           np.square(img_ref[:, :, 1]) +
-                           np.square(img_ref[:, :, 2]))
+        image = self.image
+        chan = image[:, :, channel]
 
-        # If dividing by 0, it is 0/0
-        sum_squares_rgb[sum_squares_rgb == 0] = 1
+        log.debug(f'Stat mask for {chan}')
 
-        # Get working value
-        norm = img_ref[:, :, channel] / np.sqrt(sum_squares_rgb)
+        if image_stats is True:
+            # Get mask based on image means
+            if self.nonMinStat is True:
+                # Filter out below threshold values before calulating the mean
+                img_mean = image[image >= self.minRGBValue].mean()
+                img_stdv = image[image >= self.minRGBValue].std()
+            else:
+                img_mean = image.mean()
+                img_stdv = image.std()
 
-        # Get mask above the mean
-        mask = norm > (norm.mean() + norm.std() * std_dev)
+            # Get mask
+            mask = chan >= (img_mean + img_stdv * std_dev)
+        else:
+            # Get mask based on channel means
+            if self.nonMinStat is True:
+                # Filter out below threshold values before calulating the mean
+                chan_mean = chan[chan >= self.minRGBValue].mean()
+                chan_std = chan[chan >= self.minRGBValue].std()
+            else:
+                chan_mean = chan.mean()
+                chan_std = chan.std()
+
+            # Get mask
+            mask = chan >= (chan_mean + chan_std * std_dev)
 
         return mask
+
 
     def neutralMask(self, Num=None, Den=None, uBnd=255.0, lBnd=0.0):
         '''
