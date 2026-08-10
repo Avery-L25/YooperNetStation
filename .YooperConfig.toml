@@ -25,7 +25,7 @@ imageType = "RGB24"  # Default: "RGB24"
 No_Aurora_CapRate = 300  # Seconds. Default: 300 (5 minutes)
 Aurora_CapRate = 60 # Seconds. Default: 60 (1 minute)
 Detection_After_Time = 600 # Seconds. Default: 600 (10 minutes)
-Aurora_MSE_Threshold = 0  # Min MSE Valuse. Default:
+Aurora_MSE_Threshold = 400  # Min MSE Valuse. Default:
 
 [sensors]
 Data_Rate = 5  # Seconds. Default: 5
@@ -43,8 +43,8 @@ RClone_Remote="remote:"
 Data_Folder         ="%Y-%m-%d_Data"
 Image_Folder_Format ="%Y-%m-%d_Images"
 Image_Name_Format   ="%Y-%m-%d_%H-%M-%S"
-Camera_Info_Format  ="%Y-%m-%d_Cam_Info.hdf5"
-Sensor_Data_Format  ="%Y-%m-%d_Sensor.hdf5"
+Camera_Info_Format  ="%Y-%m-%d_Cam_Info.h5"
+Sensor_Data_Format  ="%Y-%m-%d_Sensor.h5"
 Log_File_Format     ="YooperLog_%Y-%m-%d.log"
 Image_Extension     =".png"
 

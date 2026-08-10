@@ -390,12 +390,13 @@ def hdf(file, data_dict):
                 # resize dataset and add new value
                 f[k].resize((f[k].shape[0] + 1), axis=0)  # type: ignore
                 f[k][-1] = v  # type: ignore
-    elif file.rpartition('.')[-1] == 'hdf5':
+    elif file.rpartition('.')[-1] == 'h5':
         # If a file is passed and does not exist, check that directory exists
         hdf_direc = file.rpartition('/')[0]
         if path.exists(hdf_direc) is False:
             # Make directory to the file location
-            os.makedirs(hdf_direc)
+            if hdf_direc != '':
+                os.makedirs(hdf_direc)
 
         # Start new hdf5 file
         with h5py.File(file, "w") as f:

@@ -56,7 +56,7 @@ log_folder = path.join(wkdir, yoop_paths['Log_Folder'])
 # ? If using hdf5 or uploading using python instead of RCLONE
 # google_folder_id = yoop_config['paths']['GDrive_Folder_ID']
 img_folder = general_img_folder
-sensor_file = 'test.hdf5'
+sensor_file = 'test.h5'
 
 # Get Storage Formats
 yoop_form = yoop_config['formats']
@@ -75,7 +75,7 @@ LOW_IMG_RATE = yoop_aurora['No_Aurora_CapRate']
 AURORA_THRESHOLD = yoop_aurora['Aurora_MSE_Threshold']
 AFTER_FLAG_TIME = yoop_aurora['Detection_After_Time']
 exposure_time = 30
-image_rate = HIGH_IMG_RATE
+capture_rate = HIGH_IMG_RATE
 sensor_feed_rate = yoop_config['sensors']['Data_Rate']
 
 
@@ -185,7 +185,7 @@ def captureImage(expSec=30):
     camera_dict = {}
     camera_dict['exposure'] = expSec
     camera_dict['gain'] = ycam.gain
-
+    camera_dict['capture rate'] = capture_rate
     # Get previous image for comparison
     try:
         previous_image = copy(current_image)  # type: ignore
@@ -239,7 +239,7 @@ def updateCaptureRate(new_img, old_img):
     Update the frequency of photos capture by the station.
     Uses the threshold value set in \'.YooperConfig.toml.\'
     '''
-    global image_rate
+    global capture_rate
 
     def auroraMasks(aura_img):
         '''
@@ -276,10 +276,10 @@ def updateCaptureRate(new_img, old_img):
 
     # Check MSE against threshold and determine capture rate
     if aurora_mse > AURORA_THRESHOLD:
-        image_rate = HIGH_IMG_RATE
+        capture_rate = HIGH_IMG_RATE
         flag = True
     else:
-        image_rate = LOW_IMG_RATE
+        capture_rate = LOW_IMG_RATE
         flag = False
 
     # Return MSE and flag
@@ -444,7 +444,7 @@ def startStation():
             after = time.time()
 
             # sleep however long is needed before
-            sleep_for = image_rate - (after - before)
+            sleep_for = capture_rate - (after - before)
             if sleep_for > 0:
                 time.sleep(sleep_for)
     except KeyboardInterrupt:

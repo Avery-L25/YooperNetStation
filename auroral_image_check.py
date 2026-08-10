@@ -165,7 +165,7 @@ class AuroraImage(object):
                              'Norm >Mean - 0.25 STD Green']
 
     def __sub__(self, other):
-        product = self.compare(other, masks=self.compareMasks)
+        product = self.compare(other)
         return product
 
     # region Masks
@@ -279,17 +279,17 @@ class AuroraImage(object):
 
         return mask
 
-    def neutralMask(self, Num=None, Den=None, uBnd=255.0, lBnd=0.0):
+    def neutralMask(self, num=None, den=None, uBnd=255.0, lBnd=0.0):
         '''
         Creates a neutral mask between two numpy array given ratios.
         If a bound is not provided, defaults to extremes.
 
         Parameters
         ----------
-        Num: int, defaults to 1; np.ndarray
+        num: int, defaults to 1; np.ndarray
             The numerator channel for the mask.
             If an array is provided, it will be used directly.
-        Den: int, defaults to 1; np.ndarray
+        den: int, defaults to 1; np.ndarray
             The denomiator channel for the mask.
             If an array is provided, it will be used directly.
         uBnd: float, default 255
@@ -330,7 +330,7 @@ class AuroraImage(object):
 
         # Allow flexibility in masking
         def getArray(val, val_name=''):
-            'Take Num or Den and ensure it is an array'
+            'Take num or den and ensure it is an array'
             if type(val) is int:
                 # Get RGB channel of integer
                 val = self.image[:, :, val]
@@ -358,15 +358,15 @@ class AuroraImage(object):
             return val
 
         # Ensure Denominator and Numerator are arrays.
-        Den = getArray(Den, 'Denominator')
-        Num = getArray(Num, 'Numerator')
+        den = getArray(den, 'Denominator')
+        num = getArray(num, 'Numerator')
 
         # Find Greater/Less than conditions
-        upCon = uBnd * Den
-        loCon = lBnd * Den
+        upCon = uBnd * den
+        loCon = lBnd * den
 
         # Create mask
-        return (loCon <= Num) & (Num <= upCon)
+        return (loCon <= num) & (num <= upCon)
 
     def domPercentMask(self, channel=1, dom=1.05):
         '''
@@ -690,32 +690,6 @@ class AuroraImage(object):
     # endregion
 
     # region Create Visual
-    def compare(self, other, masks=None):
-        '''
-        Compare two images using the same masking method.
-
-        Parameters
-        ----------
-        masks: list, defaults to None
-            List of mask keys to use while comparing two images.
-        '''
-        if masks is None:
-            log.error('No masks where given to compare.')
-            masks = self.compareMasks
-            if (masks == []) | (masks is None):
-                masks = self.maskDict.keys()
-
-        cur_img = self.applyMasks(masks)
-        pre_img = other.applyMasks(masks)
-
-        # Calculate MSE
-        mask_img_diff = cur_img - pre_img
-        mse = float(np.mean(mask_img_diff**2))
-        # rmse = np.sqrt(np.mean((mask_img_diff)**2))
-        # norm_of_masked = np.linalg.norm(mask_img_diff)
-
-        return mse
-
     def applyMasks(self, masks=None):
         '''
         Apply masks to an image.
@@ -898,6 +872,41 @@ class AuroraImage(object):
         gc.collect()
 
     # endregion
+    def compare(self, other, masks=None):
+        '''
+        Compare two images using the same masking method.
+
+        Parameters
+        ----------
+        masks: list, defaults to None
+            List of mask keys to use while comparing two images.
+        '''
+        if masks is None:
+            log.debug('No masks where given to compare.')
+            # If no masks provided, use general set
+            masks = self.compareMasks
+
+            # Check that masks exist
+            for m in masks:
+                if self.maskDict.get(m) is None:
+                    # If a mask doe not exists set to None
+                    log.debug('Given mask list is missing 1 or more masks'
+                              ', using all masks instead.')
+                    masks = None
+            if (masks == []) | (masks is None):
+                # use all masks attached to image.
+                masks = self.maskDict.keys()
+
+        cur_img = self.applyMasks(masks)
+        pre_img = other.applyMasks(masks)
+
+        # Calculate MSE
+        mask_img_diff = cur_img - pre_img
+        mse = float(np.mean(mask_img_diff**2))
+        # rmse = np.sqrt(np.mean((mask_img_diff)**2))
+        # norm_of_masked = np.linalg.norm(mask_img_diff)
+
+        return mse
 
     def filterImage(self, channels, min=None, image=None):
         '''
