@@ -141,9 +141,9 @@ def updateCaptureRate(new_img, old_img):
         Create masks for the aurora images used in comparison
         '''
         # Get statMasks
-        blue_g_img_mean = aura_img.statMask(channel=2, std_dev=0,
+        blue_gt_img_mean = aura_img.statMask(channel=2, std_dev=0,
                                             image_stats=True)
-        blue_g_img_2std = aura_img.statMask(channel=2, std_dev=2,
+        blue_gt_img_2std = aura_img.statMask(channel=2, std_dev=2,
                                             image_stats=True)
         # Mask 1: B>mean & ~B>mean+2std
         mask1 = blue_g_img_mean & ~blue_g_img_2std

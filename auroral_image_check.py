@@ -980,7 +980,7 @@ class AuroraImage(object):
 
     def showImage(self):
         'Show the working image using matplotlib'
-        plt.imshow(self.image)
+        plt.imshow(self.image[:, :, ::-1])
 
 
 def getAura(file=''):
