@@ -16,6 +16,8 @@ import gc
 import logging
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import matplotlib.pyplot as plt
+import matplotlib.colorizer as mcolorizer
+import matplotlib.colors as mcolors
 plt.ion()
 # from memory_profiler import profile ### Commented out while not debugging
 # import shutil
@@ -77,7 +79,6 @@ log.setLevel(level=logging_value)
 # endregion
 
 log.info(get_memory("Script start"))
-
 
 class AuroraImage(object):
     '''
@@ -164,10 +165,45 @@ class AuroraImage(object):
         self.compareMasks = ['Inverse Neutral Gt Masked', 'RGB: Cur >Mean',
                              'Norm >Mean - 0.25 STD Green']
 
+        # Get image attributes
+
+    def __str__(self) -> str:
+        return
+
     def __sub__(self, other):
         product = self.compare(other)
         return product
 
+    # region Image Attributes
+    @property
+    def brightness(self):
+        '''
+        The brightness of an image by pixel.
+        '''
+        img_ref = self.image.astype(float)
+
+        sum_squares_rgb = np.square(img_ref[:, :, 0]) + \
+            np.square(img_ref[:, :, 1]) + \
+            np.square(img_ref[:, :, 2])
+
+        # sum_squares_rgb[sum_squares_rgb == 0] = 1
+        brightness = np.sqrt(sum_squares_rgb)
+
+        return brightness
+
+    @property
+    def r(self):
+        return self.image[:, :, 0]
+
+    @property
+    def g(self):
+        return self.image[:, :, 1]
+
+    @property
+    def b(self):
+        return self.image[:, :, 2]
+
+    # endregion
     # region Masks
 
     def getMask(self, mask_func, **kwargs):
@@ -454,240 +490,33 @@ class AuroraImage(object):
 
     # endregion
 
-    # region Library of Masks
+    # region 2D number plots
 
-    def allDefaultMasks(self):
+    def brightRatio(self, channel, byPixel=True, dimVal=6):
         '''
-        Get the basic group of masks from the
-        Basic, Norm, and Stats methods
-        '''
-        self.maskBasicImage()
-        self.maskNormImage()
-        self.maskStatsImage()
-
-    def maskBasicImage(self):
-        '''
-        Add ratio based masks to the dictionary.
-        Uses the neutralMask and domPercentMask methods
-        with the high and low ratios, and the dominant percentage
-        to get several default masking combinations.
-        '''
-        mask_dict = self.maskDict
-        image = self.image
-
-        # Find Where green is dominant
-        mask_dom_green = self.domPercentMask(channel=1, dom=dom_percent)
-        mask_dict['Dominat Percent Green Mask'] = mask_dom_green
-
-        # Get Green/Blue Ratio
-        log.debug('Get Green/Blue Ratio')
-        maskGB_neutral = self.neutralMask(image[:, :, 1], image[:, :, 2],
-                                          ratio_high, ratio_low)
-        mask_dict['Green/Blue Neutral Masked'] = maskGB_neutral
-
-        # Get Green/Red Ratio
-        log.debug('Get Green/Red Ratio')
-        maskGR_neutral = self.neutralMask(image[:, :, 1], image[:, :, 0],
-                                          ratio_high, ratio_low)
-        mask_dict['Green/Red Neutral Masked'] = maskGR_neutral
-
-        # Get Neutral Masks
-        mask_Gtop_neutral = (maskGB_neutral & maskGR_neutral)
-        mask_dict['Total Neutral Gt Masked'] = mask_Gtop_neutral
-        mask_dict['Inverse Neutral Gt Masked'] = ~mask_Gtop_neutral
-
-        # Create Mask where green is dominant and the color is not neutral
-        mask_inv_very_green = (~mask_Gtop_neutral & mask_dom_green)
-        mask_very_green = (mask_Gtop_neutral & mask_dom_green)
-        mask_dict['Regular Top Very Green Mask'] = mask_very_green
-        mask_dict['Inverse Top Very Green Mask'] = mask_inv_very_green
-
-        # Get Blue/Green Ratio/Mask
-        log.debug('Get Blue/Green Ratio')
-        maskBG_neutral = self.neutralMask(image[:, :, 2], image[:, :, 1],
-                                          ratio_high, ratio_low)
-        mask_dict['BG Neutral Masked'] = maskBG_neutral
-
-        # Get Red/Green Ration
-        log.debug('Get Red/Green Ratio')
-        maskRG_neutral = self.neutralMask(image[:, :, 0], image[:, :, 1],
-                                          ratio_high, ratio_low)
-        mask_dict['RG Neutral Masked'] = maskRG_neutral
-
-        # Get Neutral Masks
-        mask_Gbot_neutral = (maskBG_neutral & maskRG_neutral)
-        mask_dict['Total Neutral Gbot Masked'] = mask_Gbot_neutral
-        mask_dict['Inverse Neutral Gbot Masked'] = ~mask_Gbot_neutral
-
-        # Create Mask where green is dominant and the color is not neutral
-        mask_inv_very_bot_green = (~mask_Gbot_neutral & mask_dom_green)
-        mask_very_bot_green = (mask_Gbot_neutral & mask_dom_green)
-        mask_dict['Regular Bottom Very Green Mask'] = mask_very_bot_green
-        mask_dict['Inverse Bottom Very Green Mask'] = mask_inv_very_bot_green
-
-    def normMask2(self, channels=[0, 1, 2], std_dev=None):
-        '''
-        Returns norm masks for r, g, and b channels.
-        If image is provided, automatically do masked version.
-
-        When img_ref is uint8 the greater than mean isolates
-        aurora better than uint16.
-
-        If the thoroughNorm attribute is True, in addition to
-        the greater than and less than the mean masks, several
-        masks using standard deviation will be made including:
-        > mean - 0.5 * std
-        > mean + 0.5 * std
-        > mean + 2.0 * std
+        Get the ratio of color in relation to the brightness of the
+        image by normalizing or the average brightness of the image.
 
         Parameters
-        ----------
-        channels: list, defaults to [0,1,2]
-            Choose which channels to get masks for.
-            Defaults to all RGB channels
-
-        Output
-        ------
-        mask: np.ndarray
-            This mask will be a boolean array that covers the portion
-            of the image that is 'neutral' within the provided bounds.
-        '''
-        img_ref = self.image.astype('uint16')
-        mask_dict = self.maskDict
-        sum_squares_rgb = (np.square(img_ref[:, :, 0]) +
-                           np.square(img_ref[:, :, 1]) +
-                           np.square(img_ref[:, :, 2]))
-
-        # Ensure variables are lists for iteration
-        if type(channels) is int:
-            channels = [channels]
-
-        if type(std_dev) is float:
-            std_dev = [std_dev]
-        elif type(std_dev) is int:
-            std_dev = [std_dev]
-        elif std_dev is None:
-            if self.thoroughNorm is True:
-                std_dev = [-1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2]
-            else:
-                std_dev = [0]
-
-        # Set up masking variables
-        mean_masks = []
-
-        # If dividing by 0, it is 0/0
-        sum_squares_rgb[sum_squares_rgb == 0] = 1
-
-        for i in channels:
-            # Get working value
-            norm = img_ref[:, :, i] / np.sqrt(sum_squares_rgb)
-            clr = DIC_RGB[i]  # Current color for the dictionary
-
-            # Get mask above the mean
-            mean = norm > (norm.mean())
-            mean_masks.append(mean)
-
-            if self.thoroughNorm is True:
-                # Get Several STD numbers
-                stdm0_25 = norm > (norm.mean() - norm.std() * 0.25)
-                stdm0_5 = norm > (norm.mean() - norm.std() * 0.5)
-                stdm1 = norm > (norm.mean() - norm.std())
-                std0_25 = norm > (norm.mean() + norm.std() * 0.25)
-                std0_5 = norm > (norm.mean() + norm.std() * 0.5)
-                std1 = norm > (norm.mean() + norm.std())
-                std2 = norm > (norm.mean() + norm.std() * 2)
-
-                # Save masks
-                mask_dict[f'Norm >Mean - 1 STD {clr}'] = stdm1
-                mask_dict[f'Norm >Mean - 0.5 STD {clr}'] = stdm0_5
-                mask_dict[f'Norm >Mean - 0.25 STD {clr}'] = stdm0_25
-                mask_dict[f'Norm >Mean {clr}'] = mean
-                mask_dict[f'Norm <Mean {clr}'] = ~mean
-                mask_dict[f'Norm >Mean + 0.25 STD {clr}'] = std0_25
-                mask_dict[f'Norm >Mean + 0.5 STD {clr}'] = std0_5
-                mask_dict[f'Norm >Mean + 1 STD {clr}'] = std1
-                mask_dict[f'Norm >Mean + 2 STD {clr}'] = std2
-            else:
-                mask_dict[f'Norm >Mean {clr}'] = mean
-                mask_dict[f'Norm <Mean {clr}'] = ~mean
-
-        return mean_masks
-
-    def maskNormImage(self):
-        '''
-        Add norm based masks to the dictionary.
-        Uses the normMask2 method to get several
-        default masking combinations.
-        '''
-        mask_dict = self.maskDict
-
-        # Norm Masks for rgb channels
-        mask_r_rgb, mask_g_rgb, mask_b_rgb = self.normMask2()
-
-        # Greater Green Mean Less Red Mean
-        gr_not_red = mask_g_rgb & ~mask_r_rgb
-        mask_dict['>MeanG & <MeanR'] = gr_not_red
-
-        # >MeanG & <MeanB and the opposite
-        gb_green = mask_g_rgb & ~mask_b_rgb
-        mask_dict['>MeanG & <MeanB'] = gb_green
-        gb_red = ~mask_g_rgb & mask_b_rgb
-        mask_dict['<MeanG & >MeanB'] = gb_red
-
-        # Combine
-        both_gr_from_gb = gb_green | gb_red
-        mask_dict['Green Blue Norm'] = both_gr_from_gb
-
-    # @profile
-    def maskStatsImage(self, image=None):
-        '''
-        Add statistics based masks to the dictionary.
-        Uses the mean value of different channels of the
-        image to isolate dominant portions of the image.
         '''
 
-        masks_dict = self.maskDict
+        brightness = self.brightness
+        if byPixel is False:
+            # Use average brightness of the image
+            brightness = np.mean(brightness)
 
-        # Image statistics
-        if image is None:
-            image = self.image
+        # Get the ratio
+        ratio = self.image[:, :, channel] / brightness
 
-        if self.nonMinStat is True:
-            img_mean = image[image >= self.minRGBValue].mean()
-            img_stdv = image[image >= self.minRGBValue].std()
-        else:
-            img_mean = image.mean()
-            img_stdv = image.std()
+        # remove dim areas
+        ratio[brightness <= dimVal] = 0
 
-        for i in [0, 1, 2, slice(0, 3)]:
-            # Save memory by overwriting images
-            cur = image[:, :, i]
-            chan = DIC_RGB[i]
+        return ratio
 
-            if self.nonMinStat is True:
-                cur_mean = cur[cur >= self.minRGBValue].mean()
-                cur_std = cur[cur >= self.minRGBValue].std()
-            else:
-                cur_mean = cur.mean()
-                cur_std = cur.std()
-
-            log.debug(f'Stat masks for {chan}')
-            # Cur masks are based of the stats of the specific channel
-            masks_dict[f'{chan}: Cur >Mean'] = cur >= cur_mean
-            masks_dict[f'{chan}: Cur >Mean+STD'] = cur >= (cur_mean
-                                                           + cur_std)
-            masks_dict[f'{chan}: Cur >Mean+2STD'] = cur >= (cur_mean
-                                                            + cur_std
-                                                            * 2)
-
-            # Img masks_dict are based on stats of all image channels
-            masks_dict[f'{chan}: IMG >Mean'] = cur >= img_mean
-            masks_dict[f'{chan}: IMG >Mean+STD'] = cur >= (img_mean
-                                                           + img_stdv)
-            masks_dict[f'{chan}: IMG >Mean+2STD'] = cur >= (img_mean
-                                                            + img_stdv*2)
 
     # endregion
+
+
 
     # region Create Visual
     def applyMasks(self, masks=None):
@@ -980,7 +809,7 @@ class AuroraImage(object):
 
     def showImage(self):
         'Show the working image using matplotlib'
-        plt.imshow(self.image[:, :, ::-1])
+        plt.imshow(self.image)
 
 
 def getAura(file=''):
@@ -1022,3 +851,49 @@ if infile is not None:
 
 do_masks = ['Norm >Mean RED']
 log.info(get_memory("Script end"))
+
+
+def plotCol(img, byPixel=True, dimVal=10, gen_cmap=None):
+    # Get axes
+    fig, axes = plt.subplots(2, 2)
+    axes = axes.flatten()
+    fig.set_size_inches(16, 9)
+
+    # Get color ratios
+    imgs = []
+    for color in [2, 1, 0]:  # R G B
+        imgs.append(img.brightRatio(color, byPixel=byPixel, dimVal=dimVal))
+
+    # Get subplots variables
+    plot_titles = ['image', 'red', 'green', 'blue']
+    plot_cmaps = ['Greys_r', 'Reds_r', 'Greens_r', 'Blues_r']
+    if gen_cmap is None:
+        gen_cmap = plot_cmaps[0]
+
+    # create a colorizer with a predefined norm to be shared across all images
+    norm = mcolors.Normalize(vmin=np.min(imgs), vmax=np.max(imgs))
+    colorizer = mcolorizer.Colorizer(norm=norm, cmap=gen_cmap)
+
+    # Add imag to list
+    imgs = [img.image] + imgs
+    color_images = []
+
+    # Plot Raw Image
+    color_images.append(axes[0].imshow(img.image[:, :, ::-1]))
+    axes[0].set_title(plot_titles[0])
+
+    # Plot Color Map Ratios
+
+
+    for a in range(1, 4):
+        color_images.append(axes[a].imshow(imgs[a], colorizer=colorizer))  # cmap=gen_cmap))
+        axes[a].set_title(plot_titles[a])
+
+
+    cb = fig.colorbar(color_images[1], ax=axes, orientation='horizontal',
+                 fraction=.1, cmap='hot')
+    for a in range(1, 4):
+        cb.ax.plot([imgs[a].mean()]*2, [0,1], plot_titles[a])
+        cb.ax.plot([imgs[a].mean()+imgs[a].std()]*2, [0,1], plot_titles[a])
+        cb.ax.plot([imgs[a].mean()+imgs[a].std()*2]*2, [0,1], plot_titles[a])
+

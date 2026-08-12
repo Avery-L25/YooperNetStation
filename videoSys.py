@@ -39,6 +39,7 @@ from YooperCam import YooperCam  # Camera Interface for YooperNet
 from auroral_image_check import AuroraImage  # Image masking
 import filemanager as fman
 import h5py
+import functools
 
 # region Initialize Variables
 # Get working directory and repository directory
@@ -109,32 +110,37 @@ log.setLevel(level=30)
 # )
 mask_name = 'maskTuple'
 percent_complete = 0.00
-notify = 0.05
+notify = 0.01
+
+
+
 def percentComplete(comp):
     global notify
     if notify >= 1.0:
-        notify = 0.05
+        notify = 0.01
 
     if comp > notify:
-        print(f"{comp*100}% done with data")
-        notify = notify + 0.05
+        print(f"{int(comp*100)}% done with data")
+        notify = notify + 0.01
 
     if notify >= 1.0:
-        notify = 0.05
+        notify = 0.01
 
 
+aura_dict = {}
 mse = (-1.0, -1.0)
 flag = False
 previous_image = None
 current_image = None
 
 
-def updateCaptureRate(new_img, old_img):
+def auroraData(hdf_name, new_img, old_img):
     '''
     Update the frequency of photos capture by the station.
     Uses the threshold value set in \'.YooperConfig.toml.\'
     '''
-    global image_rate
+    global aura_dict, notify
+    notify = 0.01
 
     def auroraMasks(aura_img):
         '''
@@ -146,7 +152,7 @@ def updateCaptureRate(new_img, old_img):
         blue_gt_img_2std = aura_img.statMask(channel=2, std_dev=2,
                                             image_stats=True)
         # Mask 1: B>mean & ~B>mean+2std
-        mask1 = blue_g_img_mean & ~blue_g_img_2std
+        mask1 = blue_gt_img_mean & ~blue_gt_img_2std
 
         # Get neutralMasks
         neurtal_r_g = aura_img.neutralMask(num=0, den=1)
@@ -179,9 +185,31 @@ def updateCaptureRate(new_img, old_img):
         image_rate = LOW_IMG_RATE
         flag = False
 
+    aura_dict['mse'] = aurora_mse
+    aura_dict['mse_mask3'] = mse3
+    aura_dict['flag'] = flag
 
+    aura_dict['brightness'] = new_img.brightness.mean()
+
+    aura_dict['red'] = new_img.r.sum()
+    aura_dict['red mean'] = new_img.r.mean()
+    aura_dict['ratio red'] = new_img.brightRatio(0, byPixel=True).mean()
+    aura_dict['ratio red average brightness'] = new_img.brightRatio(0, byPixel=False).mean()
+
+    aura_dict['green'] = new_img.g.sum()
+    aura_dict['green mean'] = new_img.g.mean()
+    aura_dict['ratio green'] = new_img.brightRatio(1, byPixel=True).mean()
+    aura_dict['ratio green average brightness'] = new_img.brightRatio(1, byPixel=False).mean()
+
+    aura_dict['blue'] = new_img.b.sum()
+    aura_dict['blue mean'] = new_img.b.mean()
+    aura_dict['ratio blue'] = new_img.brightRatio(2, byPixel=True).mean()
+    aura_dict['ratio blue average brightness'] = new_img.brightRatio(2, byPixel=False).mean()
+
+    # aura_dict
     # Return MSE and flag
-    return (aurora_mse, mse3), flag
+    fman.hdf(hdf_name, aura_dict)
+
 
 
 def fromPhotos(folder="Data/test_photos", filename=''):
@@ -189,7 +217,8 @@ def fromPhotos(folder="Data/test_photos", filename=''):
     Test auroras from a series of photos given a directory.
     '''
     log.debug(f"starting the \'fromPhotos\' method with folder={folder}")
-    global mse, flag, previous_image, current_image
+    global aura_dict, notify, previous_image, current_image
+    notify = 0.01
 
     # Get a list of photos from the directory
     photos = dir2files(folder)
@@ -199,17 +228,14 @@ def fromPhotos(folder="Data/test_photos", filename=''):
     log.info(f"there is {num_photos}")
 
     # Testing Dictionary
-    auraDict = {}
-    auraDict['mse'] = mse
-    auraDict['flag'] = flag
-    auraDict['photo'] = 'NA'
+    aura_dict['photo'] = 'NA'
 
     # Analyze photos in a sequence
     for p in photos:
 
         log.log(DATA, f"This is photo {p} there are {num_photos} left.\n\n\n")
         num_photos = num_photos - 1
-        auraDict['photo'] = p.rpartition('/')[2]
+        aura_dict['photo'] = p.rpartition('/')[2]
         if "Identifier" in p:
             # photos.remove(p)
             log.warning("Was not photo, skipping\n\n")
@@ -218,13 +244,11 @@ def fromPhotos(folder="Data/test_photos", filename=''):
         previous_image = copy(current_image)
         cur = cv.imread(p)
         current_image = AuroraImage(cur)
-        if (current_image is not None) & (previous_image is not None):
-            mse, flag = updateCaptureRate(current_image, previous_image)
 
         # Put value in dict
-        auraDict['mse'] = mse
-        auraDict['flag'] = flag
-        fman.hdf(f'Data/hdf/{mask_name}_{filename}_image.h5', auraDict)
+        if (current_image is not None) & (previous_image is not None):
+            mse, flag = auroraData(f'Data/hdf/{filename}_image.h5',
+                                   current_image, previous_image)
         percentComplete((total_num_photos-num_photos)/total_num_photos)
 
 
@@ -232,31 +256,26 @@ def fromH5Photos(file="", filename=''):
     '''
     Test auroras from a series of photos given a directory.
     '''
-    global mse, flag, previous_image, current_image
+    global aura_dict, notify, previous_image, current_image
+    notify = 0.01
     # Get a list of photos from the directory
     with h5py.File(file, 'r') as f:
 
         # Testing Dictionary
-        auraDict = {}
-        auraDict['mse'] = mse
-        auraDict['flag'] = flag
-        auraDict['time'] = 'NA'
+
+        aura_dict['time'] = 'NA'
         total_num_photos = f['data']['images'].shape[3]
         # Analyze photos in a sequence
         for p in range(0, total_num_photos):
 
-            cur = f['data']['images'][:,:,:,p]
-            auraDict['time'] =  f['data']['timestamp'][p]
+            cur = f['data']['images'][:, :, :, p]
+            aura_dict['time'] =  f['data']['timestamp'][p]
 
             previous_image = copy(current_image)
             current_image = AuroraImage(cur)
             if (current_image is not None) & (previous_image is not None):
-                mse, flag = updateCaptureRate(current_image, previous_image)
-
-            # Put value in dict
-            auraDict['mse'] = mse
-            auraDict['flag'] = flag
-            fman.hdf(f'Data/hdf/{mask_name}_{filename}_h5.h5', auraDict)
+                auroraData(f'Data/hdf/{filename}_h5.h5',
+                           current_image, previous_image)
             percentComplete((p)/total_num_photos)
 
 
@@ -270,14 +289,15 @@ def fromVideo(video_file, filename='', fps=0):
 
     # init variables
     vf = 0
-    global mse, flag, previous_image, current_image
+    global aura_dict, notify, previous_image, current_image
+    notify = 0.01
 
     # Testing Dictionary
-    auraDict = {}
-    auraDict['mse'] = mse
-    auraDict['flag'] = flag
-    auraDict['time(ms)'] = 0
-    auraDict['frame'] = vf
+    aura_dict = {}
+    aura_dict['mse'] = mse
+    aura_dict['flag'] = flag
+    aura_dict['time(ms)'] = 0
+    aura_dict['frame'] = vf
     vid_ms = cv.CAP_PROP_POS_MSEC
     vid_frame = cv.CAP_PROP_POS_FRAMES
     total_frames = cap.get(cv.CAP_PROP_FRAME_COUNT)
@@ -315,19 +335,16 @@ def fromVideo(video_file, filename='', fps=0):
         # frame to aura img
         previous_image = copy(current_image)
         current_image = AuroraImage(frame)
-        if (current_image is not None) & (previous_image is not None):
-            mse, flag = updateCaptureRate(current_image, previous_image)
-
-        # Put value in dict
-        auraDict['mse'] = mse
-        auraDict['flag'] = flag
 
         # Get video properties
-        auraDict['time(ms)'] = cap.get(vid_ms)
+        aura_dict['time(ms)'] = cap.get(vid_ms)
         vf = cap.get(vid_frame)
-        auraDict['frame'] = vf
+        aura_dict['frame'] = vf
 
-        fman.hdf(f'Data/hdf/{mask_name}_{filename}_fps{fps}_video.h5', auraDict)
+        if (current_image is not None) & (previous_image is not None):
+            auroraData(f'Data/hdf/{filename}_fps{fps}_video.h5',
+                       current_image, previous_image)
+
         percentComplete((vf)/total_frames)
     # Stop video after loop
 
@@ -337,7 +354,7 @@ def fromVideo(video_file, filename='', fps=0):
 def dir2files(direc):
     'Gives back a list of all the files in a directory'
     files = []
-    for r,d,f in os.walk(direc):
+    for r, d, f in os.walk(direc):
         log.debug(f"\nr = {r}\nd = {d} \n\n\n f = {f}")
         if d == []:
             d = ''
