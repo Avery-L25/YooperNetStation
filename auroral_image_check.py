@@ -20,8 +20,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colorizer as mcolorizer
 import matplotlib.colors as mcolors
 plt.ion()
-# from memory_profiler import profile ### Commented out while not debugging
-# import shutil
 
 # Variables
 ratio_low = 0.9
@@ -55,6 +53,7 @@ logging_value = args.loglevel  # Level to display logging information
 
 # memory
 def get_memory(label=""):
+    'Return text info about memory usage'
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
     mem_text = (f"{label} - RSS: {mem_info.rss / 1024 / 1024:.2f} MB, " +
@@ -63,6 +62,7 @@ def get_memory(label=""):
 
 
 def log_mem(txt=''):
+    'Log method for memory info'
     log.log(19, get_memory(txt))
 
 
@@ -131,7 +131,9 @@ class AuroraImage(object):
                     if rawimg is None:
                         raise LookupError('Could not find image file '
                                           + f'\'{imagedata}\'')
-            rawimg = cv.cvtColor(rawimg, cv.COLOR_BGR2RGB)
+
+            # Ensure RGB format when read in using opencv
+            rawimg = cv.cvtColor(rawimg, cv.COLOR_BGR2RGB)  # type: ignore
         elif type(imagedata) is np.ndarray:
             rawimg = imagedata
         else:
@@ -162,9 +164,8 @@ class AuroraImage(object):
         self.compareMasks = ['Inverse Neutral Gt Masked', 'RGB: Cur >Mean',
                              'Norm >Mean - 0.25 STD Green']
 
-        # Get image attributes
-
     def __sub__(self, other):
+        'MSE of two images using masks'
         product = self.compare(other)
         return product
 
@@ -172,7 +173,7 @@ class AuroraImage(object):
     @property
     def brightness(self):
         '''
-        The brightness of an image by pixel.
+        The brightness of the image as an array
         '''
         img_ref = self.image.astype(float)
 
@@ -187,14 +188,17 @@ class AuroraImage(object):
 
     @property
     def r(self):
+        'Red Channel'
         return self.image[:, :, 0]
 
     @property
     def g(self):
+        'Green Channel'
         return self.image[:, :, 1]
 
     @property
     def b(self):
+        'Blue Channel'
         return self.image[:, :, 2]
 
     # endregion
@@ -480,8 +484,6 @@ class AuroraImage(object):
 
         return mask3d
 
-    # def maskImages(mask, text):
-
     # endregion
 
     def brightRatio(self, channel, byPixel=True, dimVal=6, briVal=442):
@@ -530,13 +532,15 @@ class AuroraImage(object):
 
     def greenAuroraRatio(self, lBnd=rg_aurora[0], uBnd=rg_aurora[1]):
         '''
-        Use the \'aurora\' green
+        Use the \'aurora\' green for masking
         '''
-
+        # Get pixel Red/Green ratio
         r_g = self.r / self.g
 
+        # Check that R/G ratio is within range
         aurora_green = (lBnd <= r_g) & (uBnd >= r_g)
 
+        # Return boolean array
         return aurora_green
 
     # region Create Visual
@@ -627,7 +631,6 @@ class AuroraImage(object):
                               (255, 255, 255), font_bold,)
         return name_img
 
-    # @profile
     def stackImages(self, mask_dict=None, width=0, height=0):
         '''
         Create grid of images depicting the different masks
@@ -838,6 +841,7 @@ class AuroraImage(object):
 
 
 def getAura(file=''):
+    'Initialize a AuroraImage object'
     if file == '':
         log.error('No file given')
         return None
@@ -879,6 +883,7 @@ log.info(get_memory("Script end"))
 
 
 def plotCol(img, byPixel=True, dimVal=10, briVal=442, gen_cmap=None):
+    'Plot per [RGB] channel view using \'brightRatio\' method (2-by-2 plot)'
     # Get axes
     fig, axes = plt.subplots(2, 2)
     axes = axes.flatten()

@@ -43,7 +43,7 @@ from Sensors.mag_data import mag_data
 import filemanager as fman
 
 # region Initialize Variables
-# Get working directory and repository directory
+# Get repository directory
 wkdir = path.dirname(path.realpath(__file__))
 
 # Load Config Files
@@ -54,10 +54,6 @@ yoop_paths = yoop_config['paths']
 general_img_folder = path.join(wkdir, yoop_paths['Images_Folder'])
 hdf_folder = path.join(wkdir, yoop_paths['HDF5_Folder'])
 log_folder = path.join(wkdir, yoop_paths['Log_Folder'])
-# ? If using hdf5 or uploading using python instead of RCLONE
-# google_folder_id = yoop_config['paths']['GDrive_Folder_ID']
-img_folder = general_img_folder
-sensor_file = 'test.h5'
 
 # Get Storage Formats
 yoop_form = yoop_config['formats']
@@ -71,10 +67,16 @@ log_file_format = path.join(log_folder, yoop_form['Log_File_Format'])
 
 # Initialize System Variables
 yoop_aurora = yoop_config['aurora']
+# Camera Settings
 HIGH_IMG_RATE = yoop_aurora['Aurora_CapRate']
 LOW_IMG_RATE = yoop_aurora['No_Aurora_CapRate']
+# Flagging Thresholds
 AURORA_THRESHOLD = yoop_aurora['Aurora_MSE_Threshold']
+RED_THRESHOLD = yoop_aurora['Red_Aurora_Threshold']
+GREEN_THRESHOLD = yoop_aurora['Green_Aurora_Threshold']
 AFTER_FLAG_TIME = yoop_aurora['Detection_After_Time']
+# Initialize variables
+last_aurora_flag = dt.datetime.fromtimestamp(0)  # Init time that won't flag
 exposure_time = 30
 capture_rate = HIGH_IMG_RATE
 sensor_feed_rate = yoop_config['sensors']['Data_Rate']
@@ -89,17 +91,12 @@ sensor_feed_rate = yoop_config['sensors']['Data_Rate']
 
 # Log
 logging.basicConfig()
-DEBUG2 = 11
-HIGH_DEBUG = 24
 DATA = 28
 
 # Add logging levels
-logging.addLevelName(DEBUG2, "DEBUG2")
-logging.addLevelName(HIGH_DEBUG, "HIGH_DEBUG")
 logging.addLevelName(DATA, "DATA")
-
 log = logging.getLogger("auraCheck")
-log.setLevel(level=30)
+log.setLevel(level=28)
 # endregion
 
 
@@ -240,7 +237,7 @@ def updateCaptureRate(new_img, old_img):
     Update the frequency of photos capture by the station.
     Uses the threshold value set in \'.YooperConfig.toml.\'
     '''
-    global capture_rate
+    global capture_rate, last_aurora_flag
 
     def auroraMasks(aura_img):
         '''
@@ -257,16 +254,14 @@ def updateCaptureRate(new_img, old_img):
         # Get neutralMasks
         neurtal_r_g = aura_img.neutralMask(num=0, den=1)
         neutral_b_g = aura_img.neutralMask(num=2, den=1)
+
         # Mask 2: Mask1 and Neutral Green bottom
         mask2 = mask1 & neutral_b_g & neurtal_r_g
 
-        # Get normMaks
-        norm_mean_green = aura_img.normMask(channel=1)
-        norm_mean_blue = aura_img.normMask(channel=2)
-        # Mask 3: Norm G>mean and Norm B<mean
-        mask3 = norm_mean_green & ~norm_mean_blue
+        aura_img.maskDict['masking'] = mask2
 
-        aura_img.maskDict['General Masking'] = mask1
+    # bool list
+    flags = []
 
     # Mask images
     auroraMasks(new_img)
@@ -274,16 +269,27 @@ def updateCaptureRate(new_img, old_img):
 
     # Compare Images
     aurora_mse = new_img - old_img
+    aurora_mse_flag = aurora_mse >= AURORA_THRESHOLD
+    flags.append(aurora_mse_flag)
 
     # Get Color Ratios
-    red_ratio = new_img.brightRatio(0, byPixel=True)
-    dom_red = np.mean(red_ratio >= RED_THRESHOLD)
-    green_aurora_ratio = new_img.greenAuroraRatio()
-    dom_green = np.mean(green_aurora_ratio >= RED_THRESHOLD)
+    red_ratio = np.mean(new_img.brightRatio(0, byPixel=True) >= 0.95)
+    red_aurora_flag = red_ratio >= RED_THRESHOLD
+    flags.append(red_aurora_flag)
+
+    green_aurora_ratio = np.mean(new_img.greenAuroraRatio())
+    green_aurora_flag = green_aurora_ratio >= GREEN_THRESHOLD
+    flags.append(green_aurora_flag)
+
     # Check MSE against threshold and determine capture rate
-    if aurora_mse > AURORA_THRESHOLD:
+    if True in flags:
         capture_rate = HIGH_IMG_RATE
+        last_aurora_flag = dt.datetime.now()
         flag = True
+    elif abs((dt.datetime.now() -
+              last_aurora_flag).total_seconds()) <= AFTER_FLAG_TIME:
+        capture_rate = HIGH_IMG_RATE
+        flag = False
     else:
         capture_rate = LOW_IMG_RATE
         flag = False

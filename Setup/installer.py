@@ -1,48 +1,53 @@
 #!/usr/bin/env python3
+'''
+Setup YooperNetStation from scratch.
 
+Actions
+-------
+1. Update & Upgrade system
+2. Install system dependencies
+3. Ensure git repository is up to date
+4. Setup Python Virtual Environment
+5. Install Python Requirements
+6. Make data locations
+7. Setup and start yoopernet.service
+'''
 import subprocess
 import os.path
 import sys
+import tomllib
 
 # Get directories and paths
-# Update to be in JSON
-working_dir = os.getcwd()
-full_path = os.path.realpath(__file__)
-rel_dir = os.path.dirname(__file__)
-
-
-# Project Vars
-def getFromToml(var_id):
-    'Get value from toml file if it exists'
-    pass
-
-
-PROJECT_NAME = "YooperNetStation"
+wkdir = os.path.dirname(os.path.realpath(__file__))
+PROJECT_DIR = wkdir.rpartition('/')[0]
+PROJECT_NAME = PROJECT_DIR.rpartition('/')[1]
 USERNAME = os.environ['LOGNAME']
-PROJECT_DIR = f"/home/{USERNAME}/{PROJECT_NAME}"
-VENV_NAME = "venv"
-VENV_DIR = f"{PROJECT_DIR}/{VENV_NAME}"
-GIT_REPO = f"https://github.com/Avery-L25/{PROJECT_NAME}.git"
-SERVICE_USER = "python_service"
+
+# Load TOML
+with open(os.path.join(PROJECT_DIR, '.YooperConfig.toml'), 'rb') as f:
+    yoopconfig = tomllib.load(f)
+
+# Get install specifics: Virtual Environment, Reference Files, Etc
+y_install = yoopconfig['install']
+VENV_NAME = y_install['Venv_Name']
+VENV_DIR = os.path.join(PROJECT_DIR, VENV_NAME)
+SERVICE_USER = y_install['Service_User']
 SERVICE_DIR = "/etc/systemd/system"
-DIRS_LIST = ['Data/images', 'Data/hdf5', 'Data/logs']
 
-# Local Files
-def getRef(fname):
-    'Make path file that will be referenced or moved'
-    # ! Update if layout changes
-    return os.path.join(rel_dir, 'Ref_Files', fname)
+# Get data locations
+dirs_list = []
+direcs_folders = ['Images_Folder', 'HDF5_Folder', 'Log_Folder']  # TOML keys
+y_dirs = yoopconfig['paths']
+for df in direcs_folders:
+    dirs_list.append(y_dirs[df])
 
-
-PKG_LIST = getRef("dependencies.txt")
-PYTHON_REQS = getRef("requirements.txt")
-SERVICE_FILE = getRef("yoopernet.service")
-STARTER_SCRIPT = getRef("startup.sh")  # ! UPDATE THIS
-DEFAULT_TOML = getRef("default.toml")
+PKG_LIST = os.path.join(wkdir, 'Ref_Files', "dependencies.txt")
+PYTHON_REQS = os.path.join(wkdir, 'Ref_Files', "requirements.txt")
+SERVICE_FILE = os.path.join(wkdir, 'Ref_Files', "yoopernet.service")
 
 # Conditions
-make_venv = False
-all_check_yes = False  # If true, does all commands unless manually overridden
+make_venv = True
+all_check_yes = True  # If true, does all commands unless manually overridden
 
 
 # region functions
@@ -69,7 +74,6 @@ def stopOrGo(msg='continue', cnt_override=False, pass_override=False):
         elif usr_in.lower() in ['n', 'no']:
             return False
         elif usr_in.lower() in ['e', 'exit']:
-            # !This is for testing the operation of the system while developing
             print("Exiting")
             sys.exit()
         else:
@@ -155,18 +159,19 @@ if stopOrGo(msg=f"install system dependencies from {PKG_LIST}",
               + f"\nError Code: {bold(e.returncode)}")
         # ! No error code returning.
         pass
+# endregion
 
 # ============================================
 # region Setup Python
 # ============================================
 
-# 1: Update repository
+# 3: Update repository
 log(f"Pulling to latest commit to: \"{PROJECT_DIR}\"")
 runStr(f"git -C {PROJECT_DIR} pull")
 success("Repository is up to date with main")
 
 
-# # 2: Create virtual Environment
+# 4: Create virtual Environment
 make_venv = stopOrGo(msg=f"Create virtual environment {VENV_NAME}"
                      " on this device", cnt_override=all_check_yes,
                      pass_override=make_venv)
@@ -179,7 +184,7 @@ if make_venv is True:
         success(f"Succesfully created {VENV_NAME}")
 
 
-# 3: Install Libraries
+# 5: Install Libraries
 log(f"Installing libaries for YooperNET from {PYTHON_REQS}")
 try:
     # Install the libraries to specified version using the requirements file
@@ -191,33 +196,16 @@ except subprocess.CalledProcessError as e:
     pass
 success("Successfully installed python libraries")
 
-# 4: Copy toml file to directory
-try:
-    # Copy toml file
-    runStr(f"cp {DEFAULT_TOML} {PROJECT_DIR}")
-    success("Copied toml file to project directory")
-except subprocess.CalledProcessError as e:
-    error("Error occurred while attempting to copy toml file."
-          + f"\nError Code: {bold(e.returncode)}")
-    pass
-# TODO: Make section that assigns files to system (ie. yoopercam when called)
-
-# 5: Setup Data Files
-# ! update with toml stuff
-# yoop_config = toml.load(toml_file)
-# data_dirs =  []
-# for i in list(yoop_config['paths'])
-#   if i.rpartition('_').lower() == 'folder':
-#       data_dirs.append(i)
-for dirs in DIRS_LIST:
+# 6: Setup Data Files
+for dirs in dirs_list:
     if os.path.exists(dirs) is False:
         os.makedirs(dirs)
-
+# endregion
 
 # ============================================
 # region Setup Services
 # ============================================
-# ! NEED TO ADD THE STARTER SCRIPT SETUP WHEN THAT IS FINISHED
+# 7: Start and enable service for start-on-boot
 sys.exit()
 while True:
     input('There is no escape, quit now.')
@@ -234,4 +222,6 @@ if stopOrGo(msg="enable service now", cnt_override=all_check_yes):
     runStr(f"sudo systemctl enable {SERVICE_FILE}")
 success(f"{SERVICE_FILE} successfully started!")
 
-log('Run testing script before operation begins')
+# endregion
+
+log('rclone must be set up manually')

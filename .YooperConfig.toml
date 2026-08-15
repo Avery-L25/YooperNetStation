@@ -36,6 +36,11 @@ Gamma_Threshold = 0.05
 [sensors]
 Data_Rate = 5  # Seconds. Default: 5
 
+[install]
+Venv_Name = "venv"
+Service_User = "python_service"  # Default: "python_service"
+
+
 [paths]
 Images_Folder="Data/images/"
 HDF5_Folder="Data/hdf5/"
@@ -55,6 +60,3 @@ Log_File_Format     ="YooperLog_%Y-%m-%d.log"
 Image_Extension     =".png"
 
 [passkeys]
-
-
-[install]
