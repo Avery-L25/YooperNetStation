@@ -26,20 +26,14 @@ Can be called using startStation() if using a seperate script.
 
 import os
 from os import path
-import sys
 import toml
 import logging
-import time
-import datetime as dt
 from copy import copy
-from multiprocessing import Process
 import cv2 as cv  # Image management
-import pyzwoasi as pza  # Camera Library
-from YooperCam import YooperCam  # Camera Interface for YooperNet
 from auroral_image_check import AuroraImage  # Image masking
 import filemanager as fman
 import h5py
-import functools
+import numpy as np
 
 # region Initialize Variables
 # Get working directory and repository directory
@@ -78,40 +72,18 @@ exposure_time = 30
 image_rate = HIGH_IMG_RATE
 sensor_feed_rate = yoop_config['sensors']['Data_Rate']
 
-
-# initializes scheduling # ! Implement for Uploading
-# import schedule
-# schedule.every(5).seconds.do(data_processing)  # collect data every 5 seconds
-# schedule.every().day.at("16:00").do(upload_data)  # upload hdf5 file at 4pm
-# schedule.every().day.at("08:00").do(cam_off)  # turn camera off after 8am
-# schedule.every().day.at("20:00").do(cam_off)  # turn camera on after 8pm
-
-# Log
-logging.basicConfig()
-DEBUG2 = 11
-HIGH_DEBUG = 24
-DATA = 28
-
-# Add logging levels
-logging.addLevelName(DEBUG2, "DEBUG2")
-logging.addLevelName(HIGH_DEBUG, "HIGH_DEBUG")
-logging.addLevelName(DATA, "DATA")
-
 log = logging.getLogger("auraCheck")
 log.setLevel(level=30)
 # endregion
 
-# from PyQt5.QtCore import QLibraryInfo
-# # from PySide2.QtCore import QLibraryInfo
-
-
-# os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
-#     QLibraryInfo.PluginsPath
-# )
-mask_name = 'maskTuple'
 percent_complete = 0.00
 notify = 0.01
 
+aura_dict = {}
+mse = (-1.0, -1.0)
+flag = False
+previous_image = None
+current_image = None
 
 
 def percentComplete(comp):
@@ -125,13 +97,6 @@ def percentComplete(comp):
 
     if notify >= 1.0:
         notify = 0.01
-
-
-aura_dict = {}
-mse = (-1.0, -1.0)
-flag = False
-previous_image = None
-current_image = None
 
 
 def auroraData(hdf_name, new_img, old_img):
@@ -148,9 +113,9 @@ def auroraData(hdf_name, new_img, old_img):
         '''
         # Get statMasks
         blue_gt_img_mean = aura_img.statMask(channel=2, std_dev=0,
-                                            image_stats=True)
+                                             image_stats=True)
         blue_gt_img_2std = aura_img.statMask(channel=2, std_dev=2,
-                                            image_stats=True)
+                                             image_stats=True)
         # Mask 1: B>mean & ~B>mean+2std
         mask1 = blue_gt_img_mean & ~blue_gt_img_2std
 
@@ -179,10 +144,8 @@ def auroraData(hdf_name, new_img, old_img):
 
     # Check MSE against threshold and determine capture rate
     if aurora_mse > AURORA_THRESHOLD:
-        image_rate = HIGH_IMG_RATE
         flag = True
     else:
-        image_rate = LOW_IMG_RATE
         flag = False
 
     aura_dict['mse'] = aurora_mse
@@ -191,25 +154,48 @@ def auroraData(hdf_name, new_img, old_img):
 
     aura_dict['brightness'] = new_img.brightness.mean()
 
-    aura_dict['red'] = new_img.r.sum()
-    aura_dict['red mean'] = new_img.r.mean()
-    aura_dict['ratio red'] = new_img.brightRatio(0, byPixel=True).mean()
-    aura_dict['ratio red average brightness'] = new_img.brightRatio(0, byPixel=False).mean()
+    rgb2str = {0: 'red', 1: 'green', 2: 'blue'}
+    for rgb in range(0, 3):
+        # Get string for dictionary
+        cur_col = rgb2str[rgb]
 
-    aura_dict['green'] = new_img.g.sum()
-    aura_dict['green mean'] = new_img.g.mean()
-    aura_dict['ratio green'] = new_img.brightRatio(1, byPixel=True).mean()
-    aura_dict['ratio green average brightness'] = new_img.brightRatio(1, byPixel=False).mean()
+        # Get image channel values
+        aura_dict[f'{cur_col}'] = new_img.image[:, :, rgb].sum()
+        aura_dict[f'{cur_col} mean'] = new_img.image[:, :, rgb].mean()
 
-    aura_dict['blue'] = new_img.b.sum()
-    aura_dict['blue mean'] = new_img.b.mean()
-    aura_dict['ratio blue'] = new_img.brightRatio(2, byPixel=True).mean()
-    aura_dict['ratio blue average brightness'] = new_img.brightRatio(2, byPixel=False).mean()
+        for tf in [True, False]:
+            # Get tag for byPixel
+            if tf is False:
+                mb = '-byPixel'
+            else:
+                mb = '-meanBright'
+
+            # Get the ratio we are working with
+            wk_ratio = new_img.brightRatio(rgb, byPixel=tf)
+            aura_dict[f'ratio {cur_col}{mb}'] = np.mean(wk_ratio)
+            aura_dict[f'ratio {cur_col}{mb} > 0'] = np.mean(wk_ratio[wk_ratio >= 0])
+
+            # Compare pixel ratio appearances at different ratios
+            rat_means = []
+            for r in [0.001, 0.25, 0.50, 0.75, 0.90, 0.95]:
+                rat_means.append(np.mean(wk_ratio >= r))
+
+            aura_dict[f'ratio {cur_col}{mb} %'] = rat_means
+
+    aura_dict['green aurora'] = np.mean(new_img.greenAuroraRatio())
+
+    r_g_ideal = 185 / 255
+    g_aura = []
+    for p in [0, 2.5, 5, 7.5, 10, 12.5, 15]:
+        lBnd = r_g_ideal * (100 - p) / 100
+        uBnd = r_g_ideal * (100 + p) / 100
+        g_aura.append(np.mean(new_img.greenAuroraRatio(lBnd, uBnd)))
+
+    aura_dict['green aurora list'] = g_aura
 
     # aura_dict
     # Return MSE and flag
     fman.hdf(hdf_name, aura_dict)
-
 
 
 def fromPhotos(folder="Data/test_photos", filename=''):
@@ -233,7 +219,7 @@ def fromPhotos(folder="Data/test_photos", filename=''):
     # Analyze photos in a sequence
     for p in photos:
 
-        log.log(DATA, f"This is photo {p} there are {num_photos} left.\n\n\n")
+        log.info( f"This is photo {p} there are {num_photos} left.\n\n\n")
         num_photos = num_photos - 1
         aura_dict['photo'] = p.rpartition('/')[2]
         if "Identifier" in p:
@@ -243,12 +229,13 @@ def fromPhotos(folder="Data/test_photos", filename=''):
 
         previous_image = copy(current_image)
         cur = cv.imread(p)
+        cur = cv.cvtColor(cur, cv.COLOR_BGR2RGB)
         current_image = AuroraImage(cur)
 
         # Put value in dict
         if (current_image is not None) & (previous_image is not None):
-            mse, flag = auroraData(f'Data/hdf/{filename}_image.h5',
-                                   current_image, previous_image)
+            auroraData(f'Data/hdf/{filename}_image.h5',
+                       current_image, previous_image)
         percentComplete((total_num_photos-num_photos)/total_num_photos)
 
 
@@ -269,7 +256,7 @@ def fromH5Photos(file="", filename=''):
         for p in range(0, total_num_photos):
 
             cur = f['data']['images'][:, :, :, p]
-            aura_dict['time'] =  f['data']['timestamp'][p]
+            aura_dict['time'] = f['data']['timestamp'][p]
 
             previous_image = copy(current_image)
             current_image = AuroraImage(cur)
@@ -315,13 +302,12 @@ def fromVideo(video_file, filename='', fps=0):
     print(filename)
     previous_image = None
     current_image = None
-    log.log(HIGH_DEBUG, f"Video Capture status before: {cap.isOpened()}")
+    log.info( f"Video Capture status before: {cap.isOpened()}")
     while cap.isOpened():
 
         # Get next frame
 
         ret, frame = cap.read()
-
         # if frame is read correctly ret is True
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
@@ -330,9 +316,10 @@ def fromVideo(video_file, filename='', fps=0):
             cur_frame = cap.get(cv.CAP_PROP_POS_FRAMES)
             vf += skip_count
             cap.set(vid_frame, vf)
-            log.log(DATA, f"On frame {cur_frame} of {total_frames}")
+            log.info( f"On frame {cur_frame} of {total_frames}")
 
         # frame to aura img
+        frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
         previous_image = copy(current_image)
         current_image = AuroraImage(frame)
 

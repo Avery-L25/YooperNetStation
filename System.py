@@ -31,6 +31,7 @@ import toml
 import logging
 import time
 import datetime as dt
+import numpy as np
 from copy import copy
 from multiprocessing import Process
 import cv2 as cv  # Image management
@@ -274,6 +275,11 @@ def updateCaptureRate(new_img, old_img):
     # Compare Images
     aurora_mse = new_img - old_img
 
+    # Get Color Ratios
+    red_ratio = new_img.brightRatio(0, byPixel=True)
+    dom_red = np.mean(red_ratio >= RED_THRESHOLD)
+    green_aurora_ratio = new_img.greenAuroraRatio()
+    dom_green = np.mean(green_aurora_ratio >= RED_THRESHOLD)
     # Check MSE against threshold and determine capture rate
     if aurora_mse > AURORA_THRESHOLD:
         capture_rate = HIGH_IMG_RATE

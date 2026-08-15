@@ -25,7 +25,13 @@ imageType = "RGB24"  # Default: "RGB24"
 No_Aurora_CapRate = 300  # Seconds. Default: 300 (5 minutes)
 Aurora_CapRate = 60 # Seconds. Default: 60 (1 minute)
 Detection_After_Time = 600 # Seconds. Default: 600 (10 minutes)
-Aurora_MSE_Threshold = 400  # Min MSE Valuse. Default:
+Aurora_MSE_Threshold = 75  # Min MSE Valuse. Default: 75
+Green_Aurora_Threshold = 0.003  # Flag for aurora when 0.3% of pixels have green aurora r/g ratio
+Red_Aurora_Threshold = 0.0135  # Flag for aurora when 1.35% of pixels are greater than 95% red
+Red_dt_Threshold = 0.05
+Green_dt_Threshold = 0.05
+Blue_dt_Threshold = 0.05
+Gamma_Threshold = 0.05
 
 [sensors]
 Data_Rate = 5  # Seconds. Default: 5

@@ -11,6 +11,7 @@ import cv2 as cv
 import numpy as np
 import os
 from os import path
+import datetime as dt
 import psutil
 import gc
 import logging
@@ -26,12 +27,15 @@ plt.ion()
 ratio_low = 0.9
 ratio_high = 1.3
 dom_percent = 1.05
+rg_aurora = [0.70, 0.75]  # The red/green ratio found in green aurora
+# 185/255 +- 2.5%
 
 # Constants
 IMAGE_EXTENSIONS = ['png', 'jpeg', 'jpg', 'jpe', 'webp']
 DIC_RGB = {0: 'RED', 1: 'GREEN', 2: 'BLUE', slice(0, 3): 'RGB'}
 RGB_CHANNEL = slice(0, 3)
 DIC_RGB2CHANNEL = {'RED': 0, 'GREEN': 1, 'BLUE': 2, 'RGB': slice(0, 3)}
+
 # region Input
 parser = ArgumentParser(description=__doc__,
                         formatter_class=RawDescriptionHelpFormatter)
@@ -44,7 +48,6 @@ parser.add_argument('-l', '--loglevel',  type=int, default=20,
 
 # Handle arguments:
 args = parser.parse_args()
-
 infile = args.infile  # File to read, if not provided skip
 outfile = args.outfile  # File to output too
 logging_value = args.loglevel  # Level to display logging information
@@ -63,22 +66,12 @@ def log_mem(txt=''):
     log.log(19, get_memory(txt))
 
 
-# Log
-logging.basicConfig()
-DEBUG2 = 11
-HIGH_DEBUG = 24
-DATA = 28
-
-# Add logging levels
-logging.addLevelName(DEBUG2, "DEBUG2")
-logging.addLevelName(HIGH_DEBUG, "HIGH_DEBUG")
-logging.addLevelName(DATA, "DATA")
-
 log = logging.getLogger("auraCheck")
 log.setLevel(level=logging_value)
 # endregion
 
 log.info(get_memory("Script start"))
+
 
 class AuroraImage(object):
     '''
@@ -91,6 +84,9 @@ class AuroraImage(object):
     '''
 
     def __init__(self, imagedata):
+
+        # Save time of init
+        self.captureTime = dt.datetime.now()
 
         # Get image as numpy array from provided data
         if type(imagedata) is str:
@@ -135,6 +131,7 @@ class AuroraImage(object):
                     if rawimg is None:
                         raise LookupError('Could not find image file '
                                           + f'\'{imagedata}\'')
+            rawimg = cv.cvtColor(rawimg, cv.COLOR_BGR2RGB)
         elif type(imagedata) is np.ndarray:
             rawimg = imagedata
         else:
@@ -166,9 +163,6 @@ class AuroraImage(object):
                              'Norm >Mean - 0.25 STD Green']
 
         # Get image attributes
-
-    def __str__(self) -> str:
-        return
 
     def __sub__(self, other):
         product = self.compare(other)
@@ -490,14 +484,31 @@ class AuroraImage(object):
 
     # endregion
 
-    # region 2D number plots
-
-    def brightRatio(self, channel, byPixel=True, dimVal=6):
+    def brightRatio(self, channel, byPixel=True, dimVal=6, briVal=442):
         '''
         Get the ratio of color in relation to the brightness of the
         image by normalizing or the average brightness of the image.
 
         Parameters
+        ----------
+        channel: int
+            RGB channel to evaluate
+        byPixel: bool, defaults to True
+            When True, use the average brightness of the image for comparison
+            When False, use the pixel brightnes for comparison
+        dimVal: int | float, defaults to 6
+            The minimum brightness to consider in an image
+            Handles nAn / divide by 0 conditions
+            Only applies when byPixel is False
+        briVal: int | float, defaults to 422
+            The maximum brightness to consider in an image
+            442 will not filter any pixels
+            Only applies when byPixel is False
+
+        Output
+        ------
+        ratio: np.ndarray
+            image channel / brightness
         '''
 
         brightness = self.brightness
@@ -508,15 +519,25 @@ class AuroraImage(object):
         # Get the ratio
         ratio = self.image[:, :, channel] / brightness
 
+        # Ensure brightnesses of 0 are filtered out
+        if dimVal < 0:
+            dimVal = 0
+
         # remove dim areas
         ratio[brightness <= dimVal] = 0
-
+        ratio[brightness >= briVal] = 0
         return ratio
 
+    def greenAuroraRatio(self, lBnd=rg_aurora[0], uBnd=rg_aurora[1]):
+        '''
+        Use the \'aurora\' green
+        '''
 
-    # endregion
+        r_g = self.r / self.g
 
+        aurora_green = (lBnd <= r_g) & (uBnd >= r_g)
 
+        return aurora_green
 
     # region Create Visual
     def applyMasks(self, masks=None):
@@ -807,6 +828,10 @@ class AuroraImage(object):
 
         return filtered_image
 
+    def switchGRB2RGB(self):
+        'Switch GRB channels to RGB'
+        self.image = cv.cvtColor(self.image, cv.COLOR_BGR2RGB)
+
     def showImage(self):
         'Show the working image using matplotlib'
         plt.imshow(self.image)
@@ -853,7 +878,7 @@ do_masks = ['Norm >Mean RED']
 log.info(get_memory("Script end"))
 
 
-def plotCol(img, byPixel=True, dimVal=10, gen_cmap=None):
+def plotCol(img, byPixel=True, dimVal=10, briVal=442, gen_cmap=None):
     # Get axes
     fig, axes = plt.subplots(2, 2)
     axes = axes.flatten()
@@ -861,8 +886,9 @@ def plotCol(img, byPixel=True, dimVal=10, gen_cmap=None):
 
     # Get color ratios
     imgs = []
-    for color in [2, 1, 0]:  # R G B
-        imgs.append(img.brightRatio(color, byPixel=byPixel, dimVal=dimVal))
+    for color in [0, 1, 2]:  # R G B
+        imgs.append(img.brightRatio(color, byPixel=byPixel, dimVal=dimVal,
+                                    briVal=briVal))
 
     # Get subplots variables
     plot_titles = ['image', 'red', 'green', 'blue']
@@ -879,21 +905,17 @@ def plotCol(img, byPixel=True, dimVal=10, gen_cmap=None):
     color_images = []
 
     # Plot Raw Image
-    color_images.append(axes[0].imshow(img.image[:, :, ::-1]))
+    color_images.append(axes[0].imshow(img.image[:, :, :]))
     axes[0].set_title(plot_titles[0])
 
     # Plot Color Map Ratios
-
-
     for a in range(1, 4):
-        color_images.append(axes[a].imshow(imgs[a], colorizer=colorizer))  # cmap=gen_cmap))
+        color_images.append(axes[a].imshow(imgs[a], colorizer=colorizer))
         axes[a].set_title(plot_titles[a])
 
-
     cb = fig.colorbar(color_images[1], ax=axes, orientation='horizontal',
-                 fraction=.1, cmap='hot')
+                      fraction=.1, cmap='hot')
     for a in range(1, 4):
-        cb.ax.plot([imgs[a].mean()]*2, [0,1], plot_titles[a])
-        cb.ax.plot([imgs[a].mean()+imgs[a].std()]*2, [0,1], plot_titles[a])
-        cb.ax.plot([imgs[a].mean()+imgs[a].std()*2]*2, [0,1], plot_titles[a])
-
+        cb.ax.plot([imgs[a].mean()]*2, [0, 1], plot_titles[a])
+        cb.ax.plot([imgs[a].mean()+imgs[a].std()]*2, [0, 1], plot_titles[a])
+        cb.ax.plot([imgs[a].mean()+imgs[a].std()*2]*2, [0, 1], plot_titles[a])
