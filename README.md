@@ -31,15 +31,32 @@ _Incomplete List_
    - Run `python3 Setup/installer.py`
    - This should create the python virtual environment and start the services
    - The code will not run until camera software is installed
-6. Install Camera Software
+6. Install Camera Software \(This is a guide if the installer fails to acquire the SDK\)
    - Navigate to [ZWO's software product SDK page](https://www.zwoastro.com/software/product-sdk/)
    - Install _ASI Camera SDK_
-7. Run `rclone config` and follow [these instructions](https://rclone.org/drive/) to setup rclone on google drive
-   NOTE: You can use a seperate device to authorize rclone without the need to log in on the device to be set up.
-8. Configure toml file to customize camera settings, file locations, and user data.
-10.
-
-**Will need to put in google folder id**
+   - Extract the zip file and locate the 'ASI_linux_mac_SDK_V1.41/lib/**armv8**' folder
+   - Move the contents into the pyzwoasi 'x64' folder location
+7. Run `rclone config` and follow [these instructions](https://rclone.org/drive/) to setup rclone on google drive.
+   - NOTE: You can use a seperate device to authorize rclone without the need to log in on the device to be set up.
+   1. Create a new remote
+   2. Name it 'remote' \(If changed, update the name in '.YooperConfig.toml'\)
+   3.  Select google drive by tying `drive` or `18`
+   4.  client_id is optional
+   5.  client_secret is optional
+   6.  Scope 3 is good for uploading only, Scope 1 allows for further access but is unnecessary
+   7.  service_account_file is optional
+   8.  Advanced Config
+       - Select yes to choose a specific folder to upload to or configure other settings.
+       - Paste the **folder id** found in the URL when asked for `Option root_folder_id.`
+       - Leave other options blank until asked again to edit advanced config
+   9.  Auto config
+       - If connected headless, select NO and authenticate on separate device.
+       - If working on the Raspberry Pi, select yes and authenticate using the browser.
+   10. Shared Drive \(Team Drive\)
+       - Seek further information for this configuration
+   11. Keep this remote
+9. Configure toml file to customize camera settings, file locations, and user data.
+10. Run `sudo systemctl status yoopernet` to ensure that the code is operational
 
 ## Usage
 Intended to automatically run after setup. Will collect data to an **hdf5 file**. 
