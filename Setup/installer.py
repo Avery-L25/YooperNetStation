@@ -16,6 +16,9 @@ import subprocess
 import os.path
 import sys
 import tomllib
+from urllib.request import urlretrieve as geturl
+from zipfile import ZipFile
+import tarfile
 
 # Get directories and paths
 wkdir = os.path.dirname(os.path.realpath(__file__))
@@ -45,6 +48,14 @@ PKG_LIST = os.path.join(wkdir, 'Ref_Files', "dependencies.txt")
 PYTHON_REQS = os.path.join(wkdir, 'Ref_Files', "requirements.txt")
 SERVICE_FILE = os.path.join(wkdir, 'Ref_Files', "yoopernet.service")
 
+camera_sdk_url = 'https://dl.zwoastro.com/software?app=DeveloperCameraSdk' + \
+    '&platform=windows86&region=Overseas'
+sdk_zip_name = 'ASI_SDK.zip'
+sdk_tar_dir = 'ASI_Camera_SDK/ASI_linux_mac_SDK_V1.41.tar.bz2'
+sdk_rules_file = 'ASI_linux_mac_SDK_V1.41/lib/asi.rules'
+sdk_armv8_start = 'ASI_linux_mac_SDK_V1.41/lib/armv8'
+sdk_armv8_end = '/home/yoopernet/YooperNetStation/venv/lib/python3.13/site-packages/pyzwoasi/lib/Linux/x64'
+
 # Conditions
 make_venv = True
 all_check_yes = True  # If true, does all commands unless manually overridden
@@ -61,7 +72,7 @@ def runStr(cmd: str):
 def stopOrGo(msg='continue', cnt_override=False, pass_override=False):
     'Get user input to continue setup'
     usr_in = None
-    if pass_override is True:
+    if pass_override is False:
         # immediately return false to pass action.
         return False
     elif cnt_override is True:
@@ -152,7 +163,7 @@ if stopOrGo(msg=f"install system dependencies from {PKG_LIST}",
             cnt_override=all_check_yes):
 
     try:
-        runStr(f"sudo apt-get install {PKG_LIST}")
+        runStr(f"xargs sudo apt-get install < {PKG_LIST}")
         log("Success")
     except subprocess.CalledProcessError as e:
         error("Error occurred while attempting to install dependencies."
@@ -203,12 +214,29 @@ for dirs in dirs_list:
 # endregion
 
 # ============================================
+# region Install Camera SDK
+# ============================================
+# Download the zip file
+geturl(camera_sdk_url, sdk_zip_name)
+
+with ZipFile(sdk_zip_name) as zip_top:
+    # extract the tar file from the zip
+    zip_top.extract(sdk_tar_dir)
+    with tarfile.open(sdk_tar_dir, "r:bz2") as tar_fold:
+        # extract the tar file contents
+        tar_fold.extractall()
+
+# Move the right files to the reference library
+runStr(f'cp -r {sdk_armv8_start} {sdk_armv8_end}')
+# Install the rules
+runStr(f'sudo install {sdk_rules_file} /lib/udev/rules.d')
+runStr(f'sudo install {sdk_rules_file} /etc/udev/rules.d')
+# endregion
+
+# ============================================
 # region Setup Services
 # ============================================
 # 7: Start and enable service for start-on-boot
-sys.exit()
-while True:
-    input('There is no escape, quit now.')
 log(f"Setting up {SERVICE_FILE}")
 
 # Put service file in proper directory
